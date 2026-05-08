@@ -10,6 +10,8 @@ import { useUser } from "@/lib/user";
 import { buildHostInvitationWhatsappLink } from "@/lib/invitation";
 import { buildRsvpUrl, buildWhatsAppMessage } from "@/lib/rsvpLinks";
 import { trackEvent } from "@/lib/analytics";
+import { subscribeRsvpUpdates, type RsvpUpdate } from "@/lib/rsvpSync";
+import { showToast } from "@/components/Toast";
 import {
   GUEST_AGE_GROUP_LABELS,
   GUEST_GROUP_LABELS,
@@ -35,6 +37,7 @@ import {
   AlertCircle,
   ChevronDown,
   BookUser,
+  Download,
 } from "lucide-react";
 
 const STATUS_LABEL: Record<GuestStatus, string> = {
@@ -111,6 +114,34 @@ export default function GuestsPage() {
     void mintMissingRsvpTokens();
   }, [hydrated, state.event?.signingKey]);
 
+  // Live RSVP feed — toast + brief row glow when a guest answers from any
+  // device. We only fire toasts for updates that aren't from this same tab
+  // ("self") so the host doesn't see a notification for their own clicks.
+  const [recentlyChanged, setRecentlyChanged] = useState<{ id: string; at: number } | null>(null);
+  useEffect(() => {
+    const off = subscribeRsvpUpdates((u: RsvpUpdate) => {
+      if (u.source === "self") {
+        // Still flash the row so the dashboard feels alive when the host
+        // clicks "אישר" themselves, but skip the toast.
+        setRecentlyChanged({ id: u.guestId, at: Date.now() });
+        return;
+      }
+      const guest = state.guests.find((g) => g.id === u.guestId);
+      const name = guest?.name ?? "אורח";
+      const label =
+        u.status === "confirmed"
+          ? `✅ ${name} בדיוק אישר/ה הגעה!`
+          : u.status === "maybe"
+            ? `🤔 ${name} ענה/תה 'אולי'`
+            : u.status === "declined"
+              ? `❌ ${name} לא יוכל/תוכל להגיע`
+              : `🔔 ${name} עדכן/ה סטטוס`;
+      showToast(label, u.status === "confirmed" ? "success" : "info");
+      setRecentlyChanged({ id: u.guestId, at: Date.now() });
+    });
+    return off;
+  }, [state.guests]);
+
   const filtered = useMemo(() => {
     return state.guests.filter((g) => {
       if (filter !== "all" && g.status !== filter) return false;
@@ -126,12 +157,14 @@ export default function GuestsPage() {
     const confirmed = state.guests.filter((g) => g.status === "confirmed");
     const declined = state.guests.filter((g) => g.status === "declined");
     const invited = state.guests.filter((g) => g.status === "invited");
+    const maybe = state.guests.filter((g) => g.status === "maybe");
     return {
       total: state.guests.length,
       confirmedCount: confirmed.length,
       confirmedHeads: confirmed.reduce((s, g) => s + g.attendingCount, 0),
       declined: declined.length,
       invited: invited.length,
+      maybe: maybe.length,
       pending: state.guests.filter((g) => g.status === "pending").length,
     };
   }, [state.guests]);
@@ -205,6 +238,45 @@ export default function GuestsPage() {
             <Stat label="לא יגיעו" value={stats.declined} />
           </div>
 
+          {stats.total > 0 && (
+            <div className="mt-5 card p-5 md:p-6 grid sm:grid-cols-[160px_1fr] gap-5 items-center">
+              <RsvpDonut
+                confirmed={stats.confirmedCount}
+                maybe={stats.maybe}
+                declined={stats.declined}
+                pending={stats.total - stats.confirmedCount - stats.maybe - stats.declined}
+              />
+              <div className="space-y-2">
+                <RsvpLegend color="rgb(110,231,183)" label="אישרו" value={stats.confirmedCount} total={stats.total} />
+                <RsvpLegend color="rgb(252,211,77)" label="אולי" value={stats.maybe} total={stats.total} />
+                <RsvpLegend color="rgb(248,113,113)" label="לא יגיעו" value={stats.declined} total={stats.total} />
+                <RsvpLegend color="rgba(255,255,255,0.35)" label="ממתינים" value={stats.total - stats.confirmedCount - stats.maybe - stats.declined} total={stats.total} />
+              </div>
+            </div>
+          )}
+
+          {/* Bulk actions: CSV + copy confirmed */}
+          {stats.total > 0 && (
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => exportGuestsCsv(state.guests, state.event!)}
+                className="btn-secondary text-sm py-2 px-3 inline-flex items-center gap-2"
+                title="הורד את כל רשימת המוזמנים כ-CSV (פותח באקסל / Google Sheets)"
+              >
+                <Download size={14} />
+                ייצא ל-Excel (CSV)
+              </button>
+              <button
+                onClick={() => copyConfirmedList(state.guests)}
+                className="btn-secondary text-sm py-2 px-3 inline-flex items-center gap-2"
+                title="העתק רשימה של רק האורחים שאישרו הגעה"
+              >
+                <Copy size={14} />
+                העתק רשימת מאשרים
+              </button>
+            </div>
+          )}
+
           {!state.event?.hostPhone && (
             <div className="mt-6 card p-4 flex items-start gap-3" style={{ borderColor: "rgba(251,191,36,0.4)", background: "rgba(251,191,36,0.06)" }}>
               <AlertCircle size={20} className="text-amber-300 mt-0.5 shrink-0" />
@@ -242,7 +314,12 @@ export default function GuestsPage() {
               </div>
             )}
             {filtered.map((guest) => (
-              <GuestRow key={guest.id} guest={guest} event={state.event!} />
+              <GuestRow
+                key={guest.id}
+                guest={guest}
+                event={state.event!}
+                glow={recentlyChanged?.id === guest.id ? recentlyChanged.at : undefined}
+              />
             ))}
           </div>
         </div>
@@ -303,7 +380,16 @@ function FilterTabs({
   );
 }
 
-function GuestRow({ guest, event }: { guest: Guest; event: import("@/lib/types").EventInfo }) {
+function GuestRow({
+  guest,
+  event,
+  glow,
+}: {
+  guest: Guest;
+  event: import("@/lib/types").EventInfo;
+  /** Timestamp when this row last received an RSVP update — drives a 2s gold halo. */
+  glow?: number;
+}) {
   const [open, setOpen] = useState(false);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   // Build the signed RSVP URL asynchronously (HMAC requires async crypto.subtle).
@@ -353,7 +439,10 @@ function GuestRow({ guest, event }: { guest: Guest; event: import("@/lib/types")
   };
 
   return (
-    <div className="card p-4 md:p-5">
+    <div
+      className={`card p-4 md:p-5 transition-shadow duration-700 ${glow ? "rsvp-glow" : ""}`}
+      data-glow-key={glow ?? undefined}
+    >
       <div className="flex items-center gap-4">
         <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#2a2a32] to-[#15151a] border border-white/10 flex items-center justify-center font-semibold">
           {guest.name.charAt(0)}
@@ -921,4 +1010,151 @@ function BulkDoneScreen({
       </div>
     </div>
   );
+}
+
+// ───────────────────────────────── Donut chart + legend ─────────────────────────────────
+
+/** Inline SVG donut — no chart library, no JS for animation, just stroke-dasharray. */
+function RsvpDonut({
+  confirmed,
+  maybe,
+  declined,
+  pending,
+}: {
+  confirmed: number;
+  maybe: number;
+  declined: number;
+  pending: number;
+}) {
+  const total = confirmed + maybe + declined + pending;
+  if (total === 0) return null;
+  const r = 56;
+  const c = 2 * Math.PI * r;
+  const segments = [
+    { value: confirmed, color: "rgb(110,231,183)" },
+    { value: maybe, color: "rgb(252,211,77)" },
+    { value: declined, color: "rgb(248,113,113)" },
+    { value: pending, color: "rgba(255,255,255,0.35)" },
+  ];
+  let offset = 0;
+  return (
+    <div className="relative w-[140px] h-[140px] mx-auto" aria-label="פילוח אישורי הגעה">
+      <svg viewBox="0 0 140 140" className="w-full h-full -rotate-90">
+        <circle cx={70} cy={70} r={r} fill="none" stroke="var(--input-bg)" strokeWidth={18} />
+        {segments.map((s, i) => {
+          const len = (s.value / total) * c;
+          const dasharray = `${len} ${c - len}`;
+          const dashoffset = -offset;
+          offset += len;
+          if (s.value === 0) return null;
+          return (
+            <circle
+              key={i}
+              cx={70}
+              cy={70}
+              r={r}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={18}
+              strokeDasharray={dasharray}
+              strokeDashoffset={dashoffset}
+              strokeLinecap="butt"
+            />
+          );
+        })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+        <div className="text-2xl font-extrabold ltr-num gradient-gold">{confirmed}</div>
+        <div className="text-[10px] uppercase tracking-wider" style={{ color: "var(--foreground-muted)" }}>אישרו</div>
+      </div>
+    </div>
+  );
+}
+
+function RsvpLegend({ color, label, value, total }: { color: string; label: string; value: number; total: number }) {
+  const pct = total === 0 ? 0 : Math.round((value / total) * 100);
+  const w = total === 0 ? 0 : Math.max(2, Math.round((value / total) * 100));
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs mb-1">
+        <span className="inline-flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} aria-hidden />
+          <span style={{ color: "var(--foreground-soft)" }}>{label}</span>
+        </span>
+        <span className="ltr-num font-semibold" style={{ color: "var(--foreground)" }}>
+          {value} <span style={{ color: "var(--foreground-muted)" }}>({pct}%)</span>
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
+        <div className="h-full" style={{ width: `${w}%`, background: color }} aria-hidden />
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────── CSV export + copy confirmed ────────────────────────────
+
+const CSV_HEADERS = ["שם", "טלפון", "סטטוס", "כמות", "צד", "הערות", "אישור התקבל"] as const;
+
+const STATUS_TEXT_FOR_CSV: Record<GuestStatus, string> = {
+  pending: "ממתין",
+  invited: "נשלחה הזמנה",
+  confirmed: "אישר",
+  maybe: "אולי",
+  declined: "לא מגיע",
+};
+
+/**
+ * Quote a CSV cell. Doubles inner quotes per RFC 4180. We always wrap in
+ * quotes so any embedded comma/newline is harmless.
+ */
+function csvQuote(s: string): string {
+  return `"${(s ?? "").replace(/"/g, '""')}"`;
+}
+
+function exportGuestsCsv(guests: Guest[], event: import("@/lib/types").EventInfo) {
+  const rows = [
+    CSV_HEADERS.map(csvQuote).join(","),
+    ...guests.map((g) =>
+      [
+        g.name,
+        g.phone,
+        STATUS_TEXT_FOR_CSV[g.status],
+        String(g.attendingCount ?? 1),
+        g.side === "bride" ? "כלה" : g.side === "groom" ? "חתן" : g.side === "shared" ? "משותף" : "",
+        g.notes ?? "",
+        g.respondedAt ? new Date(g.respondedAt).toLocaleDateString("he-IL") : "",
+      ].map(csvQuote).join(","),
+    ),
+  ].join("\n");
+  // BOM so Excel detects UTF-8 + Hebrew correctly. Without it, Hebrew shows as gibberish.
+  const blob = new Blob(["﻿" + rows], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `momentum-guests-${event.id.slice(0, 8)}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  trackEvent("guests_csv_export", { eventId: event.id, count: guests.length });
+}
+
+async function copyConfirmedList(guests: Guest[]) {
+  const confirmed = guests.filter((g) => g.status === "confirmed");
+  if (confirmed.length === 0) {
+    showToast("אין מאשרים להעתיק עדיין", "info");
+    return;
+  }
+  const lines = confirmed.map((g) => {
+    const heads = (g.attendingCount ?? 1);
+    const suffix = heads > 1 ? ` (${heads})` : "";
+    const phone = g.phone ? ` · ${g.phone}` : "";
+    return `${g.name}${suffix}${phone}`;
+  });
+  const text = lines.join("\n");
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(`הועתקו ${confirmed.length} מאשרים ✓`, "success");
+  } catch {
+    showToast("העתקה נכשלה — סמן ידנית", "error");
+  }
 }

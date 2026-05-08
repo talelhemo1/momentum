@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { actions, useAppState } from "@/lib/store";
+import { useAppState } from "@/lib/store";
+import { publishRsvpUpdate } from "@/lib/rsvpSync";
 import { EVENT_TYPE_LABELS, type EventType } from "@/lib/types";
 import type { GuestStatus } from "@/lib/types";
 import { EVENT_CONFIG } from "@/lib/eventConfig";
@@ -193,16 +194,20 @@ function RsvpInner() {
     if (valid) {
       window.open(url, "_blank", "noopener,noreferrer");
     }
-    // Persist into the local store IF the host's event matches this RSVP.
-    // This is what makes the dashboard reflect the answer in real time when
-    // the host opens their PWA on the same device. Cross-device sync arrives
-    // in phase 4.
+    // Persist + broadcast through every available transport. publishRsvpUpdate:
+    //   1) writes locally via actions.setRsvp (in-tab dashboard reacts via useAppState)
+    //   2) posts on BroadcastChannel for other tabs of the same browser
+    //   3) upserts to Supabase (best-effort) for cross-device dashboards
+    // We only call it when the host's event matches — same guard as before.
     if (state.event && state.event.id === resolved.eventId) {
       const noteTrimmed = note.trim();
-      actions.setRsvp(resolved.guest.id, finalStatus, finalCount);
-      if (noteTrimmed) {
-        actions.updateGuest(resolved.guest.id, { notes: noteTrimmed });
-      }
+      void publishRsvpUpdate({
+        eventId: resolved.eventId,
+        guestId: resolved.guest.id,
+        status: finalStatus,
+        attendingCount: finalCount,
+        notes: noteTrimmed || undefined,
+      });
     }
     trackEvent(`rsvp_${finalStatus}`, {
       eventId: resolved.eventId,

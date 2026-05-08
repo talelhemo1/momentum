@@ -660,6 +660,16 @@ body {
 }
 .route-fade { animation: route-fade 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 
+/* Brief gold halo around a guest row when a fresh RSVP arrives. The animation
+   plays once via key change (`data-glow-key`); after ~1.6s the row settles
+   back into its normal card style. */
+@keyframes rsvp-glow {
+  0%   { box-shadow: 0 0 0 0 rgba(212,176,104,0.0); }
+  10%  { box-shadow: 0 0 0 4px rgba(212,176,104,0.45), 0 0 60px rgba(212,176,104,0.45); }
+  100% { box-shadow: 0 0 0 0 rgba(212,176,104,0.0); }
+}
+.rsvp-glow { animation: rsvp-glow 1700ms ease-out; }
+
 @keyframes scale-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
 .scale-in { animation: scale-in 350ms ease-out both; }
 
