@@ -44,6 +44,24 @@ export const REGION_LABELS: Record<Region, string> = {
 
 export type GuestStatus = "pending" | "invited" | "confirmed" | "declined" | "maybe";
 
+export type GuestGroup = "family" | "friends" | "work" | "neighbors" | "other";
+export type GuestAgeGroup = "child" | "teen" | "adult" | "senior";
+
+export const GUEST_GROUP_LABELS: Record<GuestGroup, string> = {
+  family: "משפחה",
+  friends: "חברים",
+  work: "עבודה",
+  neighbors: "שכנים",
+  other: "אחר",
+};
+
+export const GUEST_AGE_GROUP_LABELS: Record<GuestAgeGroup, string> = {
+  child: "ילד/ה",
+  teen: "נוער",
+  adult: "מבוגר/ת",
+  senior: "קשיש/ה",
+};
+
 export interface Guest {
   id: string;
   name: string;
@@ -56,6 +74,17 @@ export interface Guest {
   respondedAt?: string;
   /** Money in NIS the guest gave at the event. Used for post-event balance & reciprocity. */
   envelopeAmount?: number;
+  // ─── Smart-seating signals (all optional; backfilled with sensible defaults) ───
+  /** Social context — drives seating cohesion. */
+  group?: GuestGroup;
+  /** Age bucket — drives age balance across tables. */
+  ageGroup?: GuestAgeGroup;
+  /** "Male" / "female" / null — used only for soft gender balance, never as gating. */
+  gender?: "male" | "female";
+  /** Guest IDs this person should NEVER share a table with (exes, feuds). */
+  conflictsWith?: string[];
+  /** Guest IDs this person MUST share a table with (couples, parents+kids). */
+  mustSitWith?: string[];
 }
 
 export type BudgetCategory =
