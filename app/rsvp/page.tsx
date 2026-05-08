@@ -3,12 +3,14 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useAppState } from "@/lib/store";
+import { actions, useAppState } from "@/lib/store";
 import { EVENT_TYPE_LABELS, type EventType } from "@/lib/types";
 import type { GuestStatus } from "@/lib/types";
 import { EVENT_CONFIG } from "@/lib/eventConfig";
 import { Logo } from "@/components/Logo";
 import { trackEvent } from "@/lib/analytics";
+import { verifyRsvpToken } from "@/lib/crypto";
+import { parseRsvpQuery } from "@/lib/rsvpLinks";
 import {
   decodeInvitation,
   buildGuestResponseWhatsappLink,
@@ -40,13 +42,20 @@ export default function RsvpPageRouter() {
 
 function RsvpInner() {
   const searchParams = useSearchParams();
+  // Two URL formats are supported:
+  //  v2 token: /rsvp?e=<eventId>&g=<guestId>&t=<token>  — preferred (HMAC-verified)
+  //  legacy:   /rsvp?d=<base64>&sig=<sig>               — kept for old invitations
   const dParam = searchParams.get("d");
   const sigParam = searchParams.get("sig");
+  const tokenQuery = useMemo(() => parseRsvpQuery(searchParams), [searchParams]);
   const { state, hydrated } = useAppState();
   const [count, setCount] = useState(2);
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState<null | "confirmed" | "declined" | "maybe">(null);
   const [showConfetti, setShowConfetti] = useState(false);
+  // Token-mode verification result. `null` = not yet checked; `false` = failed
+  // (rejected URL); `true` = signed correctly by the host's signing key.
+  const [tokenOk, setTokenOk] = useState<null | boolean>(null);
   const passthroughSig = sigParam || undefined;
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -56,7 +65,50 @@ function RsvpInner() {
     return decodeInvitation(dParam);
   }, [dParam]);
 
+  // Verify the token URL against the host's local event.signingKey. Runs only
+  // when both pieces are available; if the page is opened on a non-host device
+  // there's no signing key to check against — `state.event` will be null and
+  // the token path will simply not resolve, which is the desired behavior.
+  useEffect(() => {
+    let cancelled = false;
+    if (!tokenQuery.eventId || !tokenQuery.guestId || !tokenQuery.token) return;
+    if (!state.event?.signingKey) return;
+    // verifyRsvpToken returns a Promise even when the inputs are obviously
+    // wrong, so we route both the "wrong event id" rejection AND the genuine
+    // crypto verification through the same async path. Keeps setState out of
+    // the synchronous effect body, which the lint rule rightfully forbids.
+    const eventIdMatches = state.event.id === tokenQuery.eventId;
+    const verification: Promise<boolean> = eventIdMatches
+      ? verifyRsvpToken(tokenQuery.token, tokenQuery.eventId, tokenQuery.guestId, state.event.signingKey)
+      : Promise.resolve(false);
+    void verification.then((ok) => {
+      if (!cancelled) setTokenOk(ok);
+    });
+    return () => { cancelled = true; };
+  }, [tokenQuery, state.event?.signingKey, state.event?.id]);
+
   const resolved = useMemo(() => {
+    // Prefer the token URL when it verifies — read guest + event from the host's
+    // local state. This matches the spec's "no payload secrets in the URL,
+    // everything is looked up locally" model.
+    if (tokenOk && tokenQuery.eventId && tokenQuery.guestId && state.event) {
+      const ev = state.event;
+      const guest = state.guests.find((g) => g.id === tokenQuery.guestId);
+      if (ev.id === tokenQuery.eventId && guest) {
+        return {
+          eventId: ev.id,
+          eventType: ev.type,
+          hostName: ev.hostName,
+          partnerName: ev.partnerName,
+          date: ev.date,
+          city: ev.city,
+          synagogue: ev.synagogue,
+          hostPhone: ev.hostPhone,
+          guest: { id: guest.id, name: guest.name },
+        };
+      }
+    }
+    // Legacy `?d=&sig=` format — content was already in the URL.
     if (payload) {
       return {
         eventId: payload.e.id,
@@ -70,9 +122,8 @@ function RsvpInner() {
         guest: { id: payload.g.id, name: payload.g.name },
       };
     }
-    if (state.event) return null;
     return null;
-  }, [payload, state.event]);
+  }, [tokenOk, tokenQuery, payload, state.event, state.guests]);
 
   // Track view on first render with a resolved payload — only once per page load.
   const trackedRef = useRef(false);
@@ -82,8 +133,27 @@ function RsvpInner() {
     trackEvent("rsvp_view", { eventId: resolved.eventId, eventType: resolved.eventType });
   }, [resolved]);
 
-  if (!hydrated && !payload) {
+  // Loading state covers both flows: SSR/initial paint, and the async token
+  // verification round-trip in token-mode.
+  const stillVerifying =
+    !!tokenQuery.token && !!tokenQuery.eventId && !!tokenQuery.guestId && tokenOk === null;
+  if ((!hydrated && !payload) || stillVerifying) {
     return <main className="min-h-screen flex items-center justify-center" style={{ color: "var(--foreground-muted)" }}>טוען...</main>;
+  }
+
+  // Hard-reject when token URL was provided but failed verification — never
+  // fall back to legacy decoding in that case (would be a security regression).
+  if (tokenQuery.token && tokenOk === false) {
+    return (
+      <main className="min-h-screen flex items-center justify-center px-5">
+        <div className="card p-10 text-center max-w-md">
+          <h1 className="text-2xl font-bold">הקישור לא תקין</h1>
+          <p className="mt-3" style={{ color: "var(--foreground-soft)" }}>
+            הקישור שקיבלת לא חתום נכון. ייתכן שהוא ישן או פגום — בקש מהמארח לשלוח שוב.
+          </p>
+        </div>
+      </main>
+    );
   }
 
   if (!resolved) {
@@ -122,6 +192,17 @@ function RsvpInner() {
     );
     if (valid) {
       window.open(url, "_blank", "noopener,noreferrer");
+    }
+    // Persist into the local store IF the host's event matches this RSVP.
+    // This is what makes the dashboard reflect the answer in real time when
+    // the host opens their PWA on the same device. Cross-device sync arrives
+    // in phase 4.
+    if (state.event && state.event.id === resolved.eventId) {
+      const noteTrimmed = note.trim();
+      actions.setRsvp(resolved.guest.id, finalStatus, finalCount);
+      if (noteTrimmed) {
+        actions.updateGuest(resolved.guest.id, { notes: noteTrimmed });
+      }
     }
     trackEvent(`rsvp_${finalStatus}`, {
       eventId: resolved.eventId,
