@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/Header";
 import { actions, useAppState } from "@/lib/store";
-import { useUser } from "@/lib/user";
+import { useUser, userActions, type ObservanceLevel } from "@/lib/user";
+import { OBSERVANCE_DESCRIPTIONS, OBSERVANCE_LABELS } from "@/lib/israeliCalendar";
 import { generateSigningKey } from "@/lib/crypto";
 import { useNow, daysUntil } from "@/lib/useNow";
 import {
@@ -89,6 +90,10 @@ function OnboardingInner() {
   // acting on the minor's behalf. Persisted into the EventInfo on finish.
   const [guardianConsent, setGuardianConsent] = useState(false);
   const isMinorEvent = type ? MINOR_EVENT_TYPES.includes(type) : false;
+  // Observance level — controls whether reminders are suppressed on Shabbat / חג /
+  // ימי אבל. Default "secular" so we don't accidentally muzzle reminders for
+  // someone who didn't pick. Saved to UserAccount on handleFinish.
+  const [observance, setObservance] = useState<ObservanceLevel>("secular");
 
   // One-time seed of form fields from external state (the existing event in
   // edit mode, or the user's phone if signed up via OTP). The
@@ -116,6 +121,8 @@ function OnboardingInner() {
     } else if (user?.method === "phone" && user.identifier) {
       setHostPhone(user.identifier);
     }
+    // Pre-seed observance picker from the user's stored level (returning users).
+    if (user?.observanceLevel) setObservance(user.observanceLevel);
     setPrefilled(true);
   }, [hydrated, isEdit, state.event, user, prefilled]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -150,6 +157,9 @@ function OnboardingInner() {
     // Defense in depth: canNext should already block this, but never persist
     // a minor event without guardian consent.
     if (MINOR_EVENT_TYPES.includes(type) && !guardianConsent) return;
+    // Persist the observance choice to the local user profile so reminders
+    // gating can read it later. Best-effort — no profile = no save, no error.
+    userActions.updateProfile({ observanceLevel: observance });
     const existing = state.event;
     // Preserve a prior consent timestamp on edit; otherwise stamp now.
     const consentRecord = MINOR_EVENT_TYPES.includes(type)
@@ -222,6 +232,8 @@ function OnboardingInner() {
                 setHostPhone={setHostPhone}
                 guardianConsent={guardianConsent}
                 setGuardianConsent={setGuardianConsent}
+                observance={observance}
+                setObservance={setObservance}
               />
             )}
             {step === 1 && <Step2 date={date} setDate={setDate} type={type} />}
@@ -300,6 +312,8 @@ function Step1({
   setHostPhone,
   guardianConsent,
   setGuardianConsent,
+  observance,
+  setObservance,
 }: {
   type: EventType | null;
   setType: (t: EventType) => void;
@@ -313,6 +327,8 @@ function Step1({
   setHostPhone: (s: string) => void;
   guardianConsent: boolean;
   setGuardianConsent: (v: boolean) => void;
+  observance: ObservanceLevel;
+  setObservance: (o: ObservanceLevel) => void;
 }) {
   const config = type ? EVENT_CONFIG[type] : null;
   const isMinorEvent = type ? MINOR_EVENT_TYPES.includes(type) : false;
@@ -423,6 +439,45 @@ function Step1({
               />
             </div>
           </div>
+
+          {/* Observance level — drives reminder/notification gating around
+              Shabbat, חגים, and ימי אבל. Optional question; defaults to "secular"
+              so we never accidentally muzzle reminders for someone who skipped. */}
+          <fieldset className="mt-7">
+            <legend className="block text-sm mb-3" style={{ color: "var(--foreground-soft)" }}>
+              באיזו רמה אתה שומר שבת וחגים?{" "}
+              <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                (קובע מתי נשלח לך תזכורות)
+              </span>
+            </legend>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {(Object.keys(OBSERVANCE_LABELS) as ObservanceLevel[]).map((level) => {
+                const active = observance === level;
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setObservance(level)}
+                    aria-pressed={active}
+                    className="rounded-2xl px-4 py-3 text-start transition"
+                    style={{
+                      background: active ? "rgba(212,176,104,0.1)" : "var(--input-bg)",
+                      border: `1px solid ${active ? "var(--border-gold)" : "var(--border)"}`,
+                      color: active ? "var(--foreground)" : "var(--foreground-soft)",
+                    }}
+                  >
+                    <div className="font-bold text-sm">
+                      {OBSERVANCE_LABELS[level]}
+                      {active && <span className="ms-2 text-[--accent]" aria-hidden>✓</span>}
+                    </div>
+                    <div className="text-xs mt-1" style={{ color: "var(--foreground-muted)" }}>
+                      {OBSERVANCE_DESCRIPTIONS[level]}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
 
           {/* Guardian consent — REQUIRED for minor events. Without this checkbox
               the "Continue" button stays disabled (gated upstream in canNext). */}
