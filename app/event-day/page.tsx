@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
+import { ShareEventCard } from "@/components/ShareEventCard";
 import { useAppState } from "@/lib/store";
 import { useUser } from "@/lib/user";
 import { VENDORS } from "@/lib/vendors";
@@ -165,6 +166,12 @@ export default function EventDayPage() {
               </div>
             </button>
           </section>
+
+          {/* Auto-styled share card — Canvas-rendered 1080x1920 image for stories / WhatsApp. */}
+          <ShareEventCard
+            event={event}
+            qrTarget={typeof window !== "undefined" ? `${window.location.origin}/live/${event.id}` : `/live/${event.id}`}
+          />
 
           {/* Panic / Emergency contacts */}
           <section className="mt-8">
