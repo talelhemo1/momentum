@@ -269,6 +269,29 @@ export interface AssistantMessage {
   at: string;
 }
 
+/** Live-mode "ברכה" submitted by a guest at the event. Anonymous-by-default — guest
+ *  may add their name. Capped to 280 chars (handled at submission). */
+export interface Blessing {
+  id: string;
+  text: string;
+  /** Optional display name. Falls back to "אורח אנונימי". */
+  fromName?: string;
+  at: string;
+}
+
+/** Live-mode photo uploaded from a guest's phone. Stored as data: URL because we
+ *  often run without a backend; max 5MB enforced upstream. The image bytes live
+ *  in localStorage which has its own caps — we trim oldest first if quota fails. */
+export interface LivePhoto {
+  id: string;
+  /** data: or https: URL. We avoid Object URLs so they survive page reload. */
+  src: string;
+  /** Optional uploader name + caption. */
+  fromName?: string;
+  caption?: string;
+  at: string;
+}
+
 export interface AppState {
   event: EventInfo | null;
   guests: Guest[];
@@ -285,4 +308,9 @@ export interface AppState {
   assistantMessages: AssistantMessage[];
   /** Vendor IDs the user is comparing side-by-side. */
   compareVendors: string[];
+  /** Blessings submitted in live mode. Surfaced both during the event and in
+   *  the post-event memory-album view. */
+  blessings: Blessing[];
+  /** Photos uploaded in live mode. Same lifecycle as blessings. */
+  livePhotos: LivePhoto[];
 }
