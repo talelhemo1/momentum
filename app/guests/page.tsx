@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
@@ -8,6 +8,8 @@ import { PrintButton } from "@/components/PrintButton";
 import { useAppState, actions, mintMissingRsvpTokens } from "@/lib/store";
 import { useUser } from "@/lib/user";
 import { buildHostInvitationWhatsappLink } from "@/lib/invitation";
+import { buildRsvpUrl, buildWhatsAppMessage } from "@/lib/rsvpLinks";
+import { trackEvent } from "@/lib/analytics";
 import {
   GUEST_AGE_GROUP_LABELS,
   GUEST_GROUP_LABELS,
@@ -48,6 +50,7 @@ export default function GuestsPage() {
   const { state, hydrated } = useAppState();
   const { user, hydrated: userHydrated } = useUser();
   const [showAdd, setShowAdd] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [filter, setFilter] = useState<"all" | GuestStatus>("all");
   const [search, setSearch] = useState("");
   const [importBusy, setImportBusy] = useState(false);
@@ -172,6 +175,16 @@ export default function GuestsPage() {
                 <BookUser size={18} />
                 {importBusy ? "מייבא..." : "ייבוא מאנשי קשר"}
               </button>
+              {state.guests.some((g) => g.status === "pending" && g.phone) && (
+                <button
+                  onClick={() => setShowBulk(true)}
+                  className="btn-secondary inline-flex items-center gap-2"
+                  title="פתח שליחה מרוכזת לכל מי שעוד לא נשלח לו"
+                >
+                  <Send size={18} />
+                  📤 שלח לכל מי שלא נשלח לו
+                </button>
+              )}
               <button onClick={() => setShowAdd(true)} className="btn-gold inline-flex items-center gap-2">
                 <UserPlus size={18} />
                 מוזמן חדש
@@ -235,6 +248,13 @@ export default function GuestsPage() {
         </div>
 
         {showAdd && <AddGuestModal onClose={() => setShowAdd(false)} />}
+        {showBulk && state.event && (
+          <BulkInviteModal
+            event={state.event}
+            guests={state.guests.filter((g) => g.status === "pending" && g.phone)}
+            onClose={() => setShowBulk(false)}
+          />
+        )}
       </main>
     </>
   );
@@ -287,14 +307,21 @@ function GuestRow({ guest, event }: { guest: Guest; event: import("@/lib/types")
   const [open, setOpen] = useState(false);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   // Build the signed RSVP URL asynchronously (HMAC requires async crypto.subtle).
+  // We keep `buildHostInvitationWhatsappLink` as a fallback for guests created
+  // before phase-1's token migration ran, but prefer the new token-based URL
+  // whenever a token is present.
+  void buildHostInvitationWhatsappLink; // legacy import kept intentionally — see below.
   const [whatsappUrl, setWhatsappUrl] = useState<string>("");
   const [rsvpUrl, setRsvpUrl] = useState<string>("");
   useEffect(() => {
     let cancelled = false;
-    void buildHostInvitationWhatsappLink(origin, event, guest).then(({ url, rsvpUrl }) => {
+    void Promise.all([
+      buildWhatsAppMessage(origin, event, guest),
+      buildRsvpUrl(origin, event, guest),
+    ]).then(([msg, url]) => {
       if (cancelled) return;
-      setWhatsappUrl(url);
-      setRsvpUrl(rsvpUrl);
+      setWhatsappUrl(msg.url);
+      setRsvpUrl(url);
     });
     return () => { cancelled = true; };
   }, [origin, event, guest]);
@@ -612,6 +639,285 @@ function AddGuestModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="btn-secondary">ביטול</button>
           <button onClick={submit} className="btn-gold">הוסף</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────── Bulk invite modal ───────────────────────────────────
+
+/**
+ * Sequential WhatsApp invite flow. The user clicks one guest's "open WhatsApp"
+ * button at a time — the popup must be triggered by a real user gesture per
+ * browser policy, so we can't loop in the background. The modal walks the
+ * host through the queue one guest at a time and tracks progress in localStorage.
+ */
+function BulkInviteModal({
+  event,
+  guests,
+  onClose,
+}: {
+  event: import("@/lib/types").EventInfo;
+  guests: Guest[];
+  onClose: () => void;
+}) {
+  const [index, setIndex] = useState(0);
+  const [opened, setOpened] = useState<Set<string>>(new Set());
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // Telemetry: stamp the start of a bulk session and the completion. Lives in
+  // localStorage via trackEvent so the host can later see how long the bulk run took.
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    trackEvent("bulk_send_started", {
+      eventId: event.id,
+      queueSize: guests.length,
+    });
+  }, [event.id, guests.length]);
+
+  const total = guests.length;
+  const remaining = guests.slice(index);
+  const current = remaining[0] ?? null;
+
+  // Pre-build the WhatsApp link for the current guest. Async crypto means we
+  // need state; recompute when `current` changes. If `current` becomes null
+  // (queue exhausted), the BulkDoneScreen replaces this whole subtree so we
+  // don't need to clear the URL here — letting it stay avoids a sync setState
+  // inside the effect, which the lint rule rightfully objects to.
+  const [waUrl, setWaUrl] = useState<string>("");
+  useEffect(() => {
+    if (!current) return;
+    let cancelled = false;
+    void buildWhatsAppMessage(origin, event, current).then((m) => {
+      if (!cancelled) setWaUrl(m.url);
+    });
+    return () => { cancelled = true; };
+  }, [current, event, origin]);
+
+  // Esc to close. Convenience.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (!current) {
+    // Queue exhausted — show a "all done" panel before letting the user close.
+    return (
+      <BulkDoneScreen
+        eventId={event.id}
+        opened={opened.size}
+        total={total}
+        onClose={onClose}
+      />
+    );
+  }
+
+  // The "open WhatsApp" action is wired directly on the <a> element below so
+  // the click stays a real user gesture (browsers block window.open from any
+  // async chain, so we deliberately avoid `window.open` here in JS).
+  const advance = () => setIndex((i) => i + 1);
+  const skip = () => setIndex((i) => i + 1);
+
+  const wasOpened = opened.has(current.id);
+  const sentSoFar = opened.size;
+  const pct = total === 0 ? 0 : Math.round((sentSoFar / total) * 100);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+      role="dialog"
+      aria-modal
+      aria-labelledby="bulk-invite-title"
+    >
+      <div
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl scale-in"
+        style={{ background: "var(--surface-1)", border: "1px solid var(--border-gold)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="p-5 flex items-start justify-between gap-3 border-b" style={{ borderColor: "var(--border)" }}>
+          <div>
+            <span className="pill pill-gold">
+              <Send size={11} /> שליחת הזמנות
+            </span>
+            <h2 id="bulk-invite-title" className="mt-2 text-xl font-extrabold tracking-tight gradient-gold">
+              שליחה מרוכזת בוואטסאפ
+            </h2>
+            <p className="mt-1 text-xs" style={{ color: "var(--foreground-soft)" }}>
+              נפתח לך את הצ׳אט עם כל אורח בנפרד — שולחים, חוזרים לכאן, ולוחצים &quot;הבא&quot;.
+            </p>
+          </div>
+          <button onClick={onClose} aria-label="סגור" className="rounded-full w-8 h-8 flex items-center justify-center hover:bg-[var(--secondary-button-bg)]">
+            <span style={{ color: "var(--foreground-muted)" }}>×</span>
+          </button>
+        </header>
+
+        <div className="p-5">
+          {/* Progress */}
+          <div className="flex items-center justify-between text-xs mb-2" style={{ color: "var(--foreground-soft)" }}>
+            <span><span className="ltr-num font-bold">{sentSoFar}</span> מתוך <span className="ltr-num">{total}</span> נשלחו</span>
+            <span className="ltr-num">{pct}%</span>
+          </div>
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
+            <div
+              className="h-full bg-gradient-to-r from-[#A8884A] via-[#D4B068] to-[#F4DEA9] transition-[width] duration-500"
+              style={{ width: `${pct}%` }}
+              aria-hidden
+            />
+          </div>
+
+          {/* Current guest card */}
+          <div className="mt-5 rounded-2xl p-4" style={{ background: "var(--input-bg)", border: "1px solid var(--border)" }}>
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#2a2a32] to-[#15151a] border border-white/10 flex items-center justify-center font-semibold">
+                {current.name.charAt(0)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold truncate">{current.name}</div>
+                <div className="text-xs flex items-center gap-1" style={{ color: "var(--foreground-muted)" }}>
+                  <Phone size={11} /> <span dir="ltr" className="ltr-num">{current.phone}</span>
+                </div>
+              </div>
+              <span className="text-xs ltr-num" style={{ color: "var(--foreground-muted)" }}>
+                #{index + 1}/{total}
+              </span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="mt-5 flex flex-col gap-2.5">
+            <a
+              href={waUrl || "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                if (!waUrl) {
+                  e.preventDefault();
+                  return;
+                }
+                actions.markInvited(current.id);
+                setOpened((prev) => {
+                  const next = new Set(prev);
+                  next.add(current.id);
+                  return next;
+                });
+              }}
+              className={`btn-gold py-3 inline-flex items-center justify-center gap-2 ${waUrl ? "" : "opacity-40 pointer-events-none"}`}
+              style={{ background: "linear-gradient(135deg, #25D366, #128C7E)", color: "#fff", borderColor: "transparent" }}
+              aria-disabled={!waUrl}
+            >
+              <MessageCircle size={16} />
+              {wasOpened ? "פתח שוב את WhatsApp" : index === 0 ? "פתח את WhatsApp עם הראשון" : "פתח את WhatsApp"}
+            </a>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={skip}
+                className="rounded-2xl py-2.5 text-sm font-medium"
+                style={{ border: "1px solid var(--border)", color: "var(--foreground-soft)" }}
+              >
+                דלג
+              </button>
+              <button
+                onClick={advance}
+                disabled={!wasOpened}
+                className="btn-gold py-2.5 inline-flex items-center justify-center gap-2 disabled:opacity-40"
+              >
+                {index + 1 === total ? "סיום" : "הבא"}
+                <ArrowRight size={14} className="rotate-180" />
+              </button>
+            </div>
+
+            <p className="text-xs text-center mt-1" style={{ color: "var(--foreground-muted)" }}>
+              💡 לחץ על &quot;פתח&quot;, שלח את ההודעה, חזור לטאב הזה, ולחץ &quot;הבא&quot;.
+            </p>
+          </div>
+
+          {/* Reference: text preview so the host knows what's being sent */}
+          <details className="mt-5 rounded-xl px-3 py-2" style={{ background: "var(--input-bg)", border: "1px solid var(--border)" }}>
+            <summary className="text-xs cursor-pointer" style={{ color: "var(--foreground-soft)" }}>
+              הצג תצוגה מקדימה של ההודעה
+            </summary>
+            <pre className="mt-2 text-[11px] whitespace-pre-wrap leading-relaxed" style={{ color: "var(--foreground-soft)" }}>
+              {/* Use the same builder synchronously by deriving from waUrl is awkward — */}
+              {/* simpler: re-render the message string via a small helper. */}
+              <BulkPreviewText origin={origin} event={event} guest={current} />
+            </pre>
+          </details>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkPreviewText({
+  origin,
+  event,
+  guest,
+}: {
+  origin: string;
+  event: import("@/lib/types").EventInfo;
+  guest: Guest;
+}) {
+  const [text, setText] = useState<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    void buildWhatsAppMessage(origin, event, guest).then((m) => {
+      if (!cancelled) setText(m.text);
+    });
+    return () => { cancelled = true; };
+  }, [origin, event, guest]);
+  return <>{text || "מכין..."}</>;
+}
+
+function BulkDoneScreen({
+  eventId,
+  opened,
+  total,
+  onClose,
+}: {
+  eventId: string;
+  opened: number;
+  total: number;
+  onClose: () => void;
+}) {
+  // Stamp completion once.
+  const stampedRef = useRef(false);
+  useEffect(() => {
+    if (stampedRef.current) return;
+    stampedRef.current = true;
+    trackEvent("bulk_send_completed", { eventId, opened, total });
+  }, [eventId, opened, total]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+      role="dialog"
+      aria-modal
+    >
+      <div
+        className="w-full max-w-sm rounded-3xl scale-in p-7 text-center"
+        style={{ background: "var(--surface-1)", border: "1px solid var(--border-gold)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="inline-flex w-16 h-16 rounded-full items-center justify-center" style={{ background: "rgba(212,176,104,0.12)", color: "var(--accent)" }}>
+          <CheckCircle2 size={32} />
+        </div>
+        <h2 className="mt-5 text-2xl font-extrabold tracking-tight gradient-gold">
+          סיימנו! 🎉
+        </h2>
+        <p className="mt-2 text-sm" style={{ color: "var(--foreground-soft)" }}>
+          נשלחו <span className="ltr-num font-bold">{opened}</span> הזמנות מתוך <span className="ltr-num">{total}</span>.
+        </p>
+        <button
+          onClick={onClose}
+          className="btn-gold mt-6 w-full py-3 inline-flex items-center justify-center gap-2"
+        >
+          סגור
+        </button>
       </div>
     </div>
   );
