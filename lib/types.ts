@@ -175,7 +175,18 @@ export interface EventInfo {
   budgetTotal: number;
   guestEstimate: number;
   createdAt: string;
+  /** Guardian consent — REQUIRED for events celebrating a minor (brit, bar/bat
+   *  mitzvah). Set when the parent/legal guardian explicitly confirms during
+   *  onboarding that they're acting on the minor's behalf. ISO timestamp records
+   *  when consent was given. Absence on a minor event = the event was created
+   *  before this requirement existed and should be re-affirmed on next edit. */
+  guardianConsent?: {
+    acceptedAt: string;
+  };
 }
+
+/** Event types that celebrate a minor and therefore require guardian consent. */
+export const MINOR_EVENT_TYPES: ReadonlyArray<EventType> = ["brit", "bar-mitzvah", "bat-mitzvah"];
 
 // (Removed unused `JourneyStep` interface — the active model is
 // `JourneyStepDef` in `./eventConfig.ts`, which is per-event-type and lives
