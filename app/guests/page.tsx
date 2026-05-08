@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { PrintButton } from "@/components/PrintButton";
-import { useAppState, actions } from "@/lib/store";
+import { useAppState, actions, mintMissingRsvpTokens } from "@/lib/store";
 import { useUser } from "@/lib/user";
 import { buildHostInvitationWhatsappLink } from "@/lib/invitation";
 import {
@@ -100,6 +100,13 @@ export default function GuestsPage() {
     }
     if (hydrated && !state.event) router.replace("/onboarding");
   }, [userHydrated, user, hydrated, state.event, router]);
+
+  // Backfill RSVP tokens for legacy guests on first hydration. The action is
+  // idempotent + dedup-coalesced inside the lib, so it's safe to call broadly.
+  useEffect(() => {
+    if (!hydrated || !state.event?.signingKey) return;
+    void mintMissingRsvpTokens();
+  }, [hydrated, state.event?.signingKey]);
 
   const filtered = useMemo(() => {
     return state.guests.filter((g) => {

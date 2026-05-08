@@ -4,7 +4,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { AppState, EventInfo, Guest, BudgetItem, BudgetCategory, VendorType, ChecklistItem, ChecklistPhase, SeatingTable, VendorMessage, AssistantMessage, Blessing, LivePhoto } from "./types";
 import { VENDORS } from "./vendors";
 import { buildDefaultChecklist } from "./checklists";
-import { generateSigningKey } from "./crypto";
+import { generateRsvpToken, generateSigningKey } from "./crypto";
 import { STORAGE_KEYS } from "./storage-keys";
 
 const STORAGE_KEY = STORAGE_KEYS.app;
@@ -263,16 +263,27 @@ export const actions = {
     status?: Guest["status"];
   }) {
     const s = readState();
+    const attending = guest.attendingCount ?? 1;
     const newGuest: Guest = {
       id: crypto.randomUUID(),
       name: guest.name,
       phone: guest.phone,
-      attendingCount: guest.attendingCount ?? 1,
+      attendingCount: attending,
+      plusOnes: Math.max(0, attending - 1),
       status: guest.status ?? "pending",
       side: guest.side,
       notes: guest.notes,
+      group: guest.group,
+      ageGroup: guest.ageGroup,
+      gender: guest.gender,
+      conflictsWith: guest.conflictsWith,
+      mustSitWith: guest.mustSitWith,
+      // RSVP token is minted async by `mintMissingRsvpTokens()` (see below)
+      // because crypto.subtle.sign returns a Promise and addGuest is sync.
     };
     writeState({ ...s, guests: [...s.guests, newGuest] });
+    // Kick off async minting in the background — non-blocking.
+    void mintMissingRsvpTokens();
     return newGuest;
   },
   updateGuest(id: string, patch: Partial<Guest>) {
@@ -396,4 +407,46 @@ const VENDOR_TO_BUDGET_CATEGORY: Record<VendorType, BudgetCategory> = {
 
 export function getStateSnapshot(): AppState {
   return readState();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RSVP token backfill — async, idempotent, safe to call repeatedly.
+// Mints HMAC tokens for any guest that doesn't have one yet, using the
+// active event's signing key. Re-renders subscribers via the usual update
+// event so the dashboard sees the new tokens immediately.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Inflight promise so concurrent callers (e.g. several `addGuest` calls in
+ * a tight loop) coalesce into a single backfill pass.
+ */
+let mintingInflight: Promise<void> | null = null;
+
+export function mintMissingRsvpTokens(): Promise<void> {
+  if (mintingInflight) return mintingInflight;
+  mintingInflight = (async () => {
+    try {
+      const s = readState();
+      if (!s.event?.signingKey) return;
+      const eventId = s.event.id;
+      const signingKey = s.event.signingKey;
+      const needs = s.guests.filter((g) => !g.rsvpToken);
+      if (needs.length === 0) return;
+      const updates = await Promise.all(
+        needs.map(async (g) => [g.id, await generateRsvpToken(eventId, g.id, signingKey)] as const),
+      );
+      const tokenById = new Map(updates);
+      // Re-read in case the user mutated guests while we were minting.
+      const fresh = readState();
+      writeState({
+        ...fresh,
+        guests: fresh.guests.map((g) =>
+          tokenById.has(g.id) && !g.rsvpToken ? { ...g, rsvpToken: tokenById.get(g.id) } : g,
+        ),
+      });
+    } finally {
+      mintingInflight = null;
+    }
+  })();
+  return mintingInflight;
 }

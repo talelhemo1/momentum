@@ -65,13 +65,29 @@ export const GUEST_AGE_GROUP_LABELS: Record<GuestAgeGroup, string> = {
 export interface Guest {
   id: string;
   name: string;
+  /** Phone number, ideally in E.164 form (+972...) but tolerant of local formats. */
   phone: string;
+  /** Total head count including the guest themselves (1+). The spec calls it
+   *  `plus_ones` but we keep `attendingCount` for backwards compatibility with
+   *  every page that already reads it. `plusOnes` (below) is the additional-only
+   *  field for new code that prefers the explicit semantics. */
   attendingCount: number;
   status: GuestStatus;
   side?: "bride" | "groom" | "shared";
   notes?: string;
   invitedAt?: string;
   respondedAt?: string;
+  /** When the host sent a follow-up reminder. Used to gate "send reminder"
+   *  buttons (no spamming guests more than once per 7 days). */
+  reminderSentAt?: string;
+  /** Additional guests beyond this one (default 0). Optional alias for
+   *  `attendingCount - 1`; new RSVP code should write both. */
+  plusOnes?: number;
+  /** HMAC-SHA256 signed token over `<eventId>|<guestId>` with the event's
+   *  signing key. Used in invitation URLs so we can verify the guest is who
+   *  they claim. Auto-minted on first creation; lazily backfilled for legacy
+   *  guests on read. */
+  rsvpToken?: string;
   /** Money in NIS the guest gave at the event. Used for post-event balance & reciprocity. */
   envelopeAmount?: number;
   // ─── Smart-seating signals (all optional; backfilled with sensible defaults) ───
