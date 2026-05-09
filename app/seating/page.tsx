@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { PrintButton } from "@/components/PrintButton";
+import { SeatingSkeleton } from "@/components/skeletons/PageSkeletons";
+import { Avatar } from "@/components/Avatar";
 import { useAppState, actions } from "@/lib/store";
 import { useUser } from "@/lib/user";
 import type { Guest, SeatingTable } from "@/lib/types";
@@ -126,7 +128,7 @@ export default function SeatingPage() {
     return (
       <>
         <Header />
-        <main className="flex-1 flex items-center justify-center" style={{ color: "var(--foreground-muted)" }}>טוען...</main>
+        <SeatingSkeleton />
       </>
     );
   }
@@ -574,9 +576,7 @@ function UnassignedPanel({ guests, onDropGuest }: { guests: Guest[]; onDropGuest
               style={{ background: "var(--input-bg)", border: "1px solid var(--border)" }}
               aria-label={`גרור את ${g.name} לשולחן`}
             >
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold" style={{ background: "var(--surface-3)", color: "var(--foreground-soft)" }}>
-                {g.name.charAt(0)}
-              </div>
+              <Avatar name={g.name} id={g.id} size={28} />
               <span className="flex-1 truncate">{g.name}</span>
               {(g.attendingCount || 1) > 1 && <span className="ltr-num text-[--accent] text-xs font-bold">+{(g.attendingCount || 1) - 1}</span>}
             </div>

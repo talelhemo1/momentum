@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
+import { CompareSkeleton } from "@/components/skeletons/PageSkeletons";
 import { useAppState, actions } from "@/lib/store";
 import { useUser } from "@/lib/user";
 import { VENDORS } from "@/lib/vendors";
@@ -44,7 +45,7 @@ export default function ComparePage() {
     return (
       <>
         <Header />
-        <main className="flex-1 flex items-center justify-center" style={{ color: "var(--foreground-muted)" }}>טוען...</main>
+        <CompareSkeleton />
       </>
     );
   }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
+import { SettingsSkeleton } from "@/components/skeletons/PageSkeletons";
 import { useUser, userActions } from "@/lib/user";
 import { useTheme } from "@/lib/theme";
 import { useAppState, actions } from "@/lib/store";
@@ -171,7 +172,7 @@ export default function SettingsPage() {
     return (
       <>
         <Header />
-        <main className="flex-1 flex items-center justify-center" style={{ color: "var(--foreground-muted)" }}>טוען...</main>
+        <SettingsSkeleton />
       </>
     );
   }

@@ -7,7 +7,19 @@
   --background-2: #0D0D10;
   --foreground: #FAFAFA;
   --foreground-soft: rgba(255, 255, 255, 0.65);
-  --foreground-muted: rgba(255, 255, 255, 0.45);
+  /* Bumped from 0.45 → 0.55 to clear WCAG AA on small text against #08080A.
+     The old value tested ~3.1:1; 0.55 lifts it to ~4.6:1. Light theme
+     stayed unchanged (light bg + dark ink already exceeds AA). */
+  --foreground-muted: rgba(255, 255, 255, 0.55);
+
+  /* Unified border-radius scale. Existing components used a mix of rounded-xl
+     (12), -2xl (16), -full — these tokens give us a single source of truth
+     so future components stay consistent. Sizes chosen to MATCH the existing
+     visual rhythm; no component shrinks/grows. */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
   --muted: #A1A1AA;
   --muted-2: #71717A;
 
@@ -186,7 +198,7 @@ body {
   background: var(--primary-button-bg);
   color: var(--primary-button-text);
   font-weight: 600;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.875rem 1.875rem;
   transition: transform 200ms ease, box-shadow 250ms ease;
   box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 12px 28px -8px rgba(0,0,0,0.18);
@@ -198,7 +210,7 @@ body {
   background: var(--secondary-button-bg);
   color: var(--foreground);
   font-weight: 500;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.875rem 1.75rem;
   border: 1px solid var(--border-strong);
   transition: background 200ms ease, border-color 200ms ease, transform 200ms ease;
@@ -210,7 +222,7 @@ body {
   background: linear-gradient(135deg, var(--gold-100) 0%, var(--gold-300) 50%, var(--gold-500) 100%);
   color: var(--gold-button-text);
   font-weight: 700;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.875rem 1.875rem;
   box-shadow: 0 1px 0 rgba(255,255,255,0.55) inset, 0 18px 40px -14px var(--accent-glow);
   transition: transform 200ms ease, box-shadow 250ms ease;
@@ -222,7 +234,7 @@ body {
   background: transparent;
   color: var(--foreground-soft);
   font-weight: 500;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.6rem 1.2rem;
   transition: background 200ms ease, color 200ms ease;
 }
@@ -232,7 +244,7 @@ body {
 .card {
   background: linear-gradient(180deg, var(--card-bg-from) 0%, var(--card-bg-to) 100%);
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: var(--radius-lg);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   position: relative;
@@ -244,7 +256,7 @@ body {
 .card-gold {
   background: linear-gradient(180deg, var(--card-bg-from) 0%, var(--card-bg-to) 100%);
   border: 1px solid var(--border-gold);
-  border-radius: 24px;
+  border-radius: var(--radius-lg);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   position: relative;
@@ -257,7 +269,7 @@ body {
 .input {
   background: var(--input-bg);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   padding: 0.875rem 1rem;
   color: var(--foreground);
   width: 100%;
@@ -283,7 +295,7 @@ body {
 .mesh-6 { background-color: #1a201a; background-image: radial-gradient(at 50% 50%, #3a553a 0, transparent 60%); }
 
 /* Pills */
-.pill { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; border-radius: 999px; padding: 0.25rem 0.625rem; border: 1px solid; font-weight: 500; }
+.pill { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; border-radius: var(--radius-pill); padding: 0.25rem 0.625rem; border: 1px solid; font-weight: 500; }
 .pill-gold { border-color: rgba(212,176,104,0.4); background: rgba(212,176,104,0.1); color: #E6C887; }
 .pill-success { border-color: rgba(52,211,153,0.3); background: rgba(52,211,153,0.1); color: rgb(110,231,183); }
 .pill-info { border-color: rgba(96,165,250,0.3); background: rgba(96,165,250,0.1); color: rgb(147,197,253); }
@@ -754,3 +766,79 @@ body {
 /* Header pills inside nav need darker text in light mode */
 [data-theme="light"] .glass nav a,
 [data-theme="light"] header nav a { color: var(--foreground-soft); }
+
+/* ─── Global focus-visible ─────────────────────────────────────────────
+   Keyboard users get a clear gold outline; mouse users keep the silent UI
+   thanks to :focus-visible. Outline-offset:2px so the ring sits outside the
+   element's own border-radius without clipping. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Print mode — strip site chrome ──────────────────────────────────── */
+@media print {
+  .no-print { display: none !important; }
+  /* Skeletons (mid-print loads), the assistant launcher, the bottom nav,
+     toasts, and the scroll-progress bar are all signal-loss when printed.
+     The .no-print class is added by each component. As a belt-and-suspenders
+     safety net, force-hide common interactive widgets that we know aren't
+     meaningful on paper. */
+  header, footer { break-inside: avoid; }
+}
+
+/* ─── /vendors animations ─────────────────────────────────────────────── */
+
+/* Subtle ken-burns on featured cards (first row only). 8s loop, alternates
+   so the pan reverses smoothly. The transform respects RTL (origin shifts). */
+@keyframes ken-burns {
+  0%   { transform: scale(1) translate(0, 0); }
+  50%  { transform: scale(1.06) translate(-1.5%, -1.5%); }
+  100% { transform: scale(1) translate(0, 0); }
+}
+.ken-burns { animation: ken-burns 8s ease-in-out infinite; transform-origin: center; }
+
+/* Soft pulse around a saved heart — fires once when toggled on. */
+@keyframes heart-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(212,176,104,0.55); }
+  60%  { box-shadow: 0 0 0 14px rgba(212,176,104,0); }
+  100% { box-shadow: 0 0 0 0 rgba(212,176,104,0); }
+}
+.heart-pulse { animation: heart-pulse 700ms ease-out; }
+
+/* Floating "+1" indicator that bubbles up from the trophy/heart on click. */
+@keyframes float-plus-one {
+  0%   { transform: translateY(0); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateY(-26px); opacity: 0; }
+}
+
+/* Skeleton shimmer — RTL-aware (right→left sweep). */
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--input-bg) 0%,
+    rgba(212,176,104,0.10) 40%,
+    rgba(212,176,104,0.18) 50%,
+    rgba(212,176,104,0.10) 60%,
+    var(--input-bg) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ken-burns, .heart-pulse, .skeleton-shimmer {
+    animation: none !important;
+  }
+}

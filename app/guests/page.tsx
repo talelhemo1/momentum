@@ -12,6 +12,10 @@ import { buildRsvpUrl, buildWhatsAppMessage } from "@/lib/rsvpLinks";
 import { trackEvent } from "@/lib/analytics";
 import { subscribeRsvpUpdates, type RsvpUpdate } from "@/lib/rsvpSync";
 import { showToast } from "@/components/Toast";
+import { fireConfettiOnce } from "@/lib/confetti";
+import { GuestsSkeleton } from "@/components/skeletons/PageSkeletons";
+import { Avatar } from "@/components/Avatar";
+import { EmptyState } from "@/components/EmptyState";
 import {
   GUEST_AGE_GROUP_LABELS,
   GUEST_GROUP_LABELS,
@@ -138,9 +142,20 @@ export default function GuestsPage() {
               : `🔔 ${name} עדכן/ה סטטוס`;
       showToast(label, u.status === "confirmed" ? "success" : "info");
       setRecentlyChanged({ id: u.guestId, at: Date.now() });
+      // Milestone: 100th confirmed RSVP. We compute by counting AFTER the
+      // store update has landed (rsvpSync writes synchronously). Confetti
+      // fires once per event-id via fireConfettiOnce.
+      if (u.status === "confirmed") {
+        const confirmed = state.guests.filter((g) => g.status === "confirmed").length;
+        // We just transitioned this guest; if they weren't already confirmed
+        // the count below shows the OLD value, so check `>= 99`.
+        if (state.event && confirmed >= 99) {
+          fireConfettiOnce(`100-confirmed-${state.event.id}`, 1500);
+        }
+      }
     });
     return off;
-  }, [state.guests]);
+  }, [state.guests, state.event]);
 
   const filtered = useMemo(() => {
     return state.guests.filter((g) => {
@@ -173,7 +188,7 @@ export default function GuestsPage() {
     return (
       <>
         <Header />
-        <main className="flex-1 flex items-center justify-center text-white/50">טוען...</main>
+        <GuestsSkeleton />
       </>
     );
   }
@@ -307,11 +322,22 @@ export default function GuestsPage() {
 
           <div className="mt-6 space-y-3">
             {filtered.length === 0 && (
-              <div className="card p-10 text-center text-white/50">
-                {state.guests.length === 0
-                  ? "עדיין לא הוספת מוזמנים. בוא נתחיל!"
-                  : "לא נמצאו מוזמנים מתאימים."}
-              </div>
+              state.guests.length === 0 ? (
+                <EmptyState
+                  icon={<Users size={28} aria-hidden />}
+                  title="עדיין לא הוספת מוזמנים"
+                  description="הוסף את האורח הראשון, או ייבא מאנשי הקשר של הטלפון. כל אורח מקבל קישור RSVP אישי חתום HMAC."
+                  secondary={{ label: "הוסף מוזמן ראשון", onClick: () => setShowAdd(true) }}
+                />
+              ) : (
+                <div
+                  className="card p-10 text-center"
+                  style={{ color: "var(--foreground-muted)" }}
+                  role="status"
+                >
+                  לא נמצאו מוזמנים מתאימים.
+                </div>
+              )
             )}
             {filtered.map((guest) => (
               <GuestRow
@@ -444,9 +470,7 @@ function GuestRow({
       data-glow-key={glow ?? undefined}
     >
       <div className="flex items-center gap-4">
-        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#2a2a32] to-[#15151a] border border-white/10 flex items-center justify-center font-semibold">
-          {guest.name.charAt(0)}
-        </div>
+        <Avatar name={guest.name} id={guest.id} size={44} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <div className="font-semibold truncate">{guest.name}</div>
@@ -860,9 +884,7 @@ function BulkInviteModal({
           {/* Current guest card */}
           <div className="mt-5 rounded-2xl p-4" style={{ background: "var(--input-bg)", border: "1px solid var(--border)" }}>
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#2a2a32] to-[#15151a] border border-white/10 flex items-center justify-center font-semibold">
-                {current.name.charAt(0)}
-              </div>
+              <Avatar name={current.name} id={current.id} size={44} />
               <div className="flex-1 min-w-0">
                 <div className="font-bold truncate">{current.name}</div>
                 <div className="text-xs flex items-center gap-1" style={{ color: "var(--foreground-muted)" }}>

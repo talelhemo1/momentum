@@ -9,6 +9,7 @@ import { EVENT_TYPE_LABELS, type EventType } from "@/lib/types";
 import type { GuestStatus } from "@/lib/types";
 import { EVENT_CONFIG } from "@/lib/eventConfig";
 import { Logo } from "@/components/Logo";
+import { RsvpSkeleton } from "@/components/skeletons/PageSkeletons";
 import { trackEvent } from "@/lib/analytics";
 import { verifyRsvpToken } from "@/lib/crypto";
 import { parseRsvpQuery } from "@/lib/rsvpLinks";
@@ -139,7 +140,7 @@ function RsvpInner() {
   const stillVerifying =
     !!tokenQuery.token && !!tokenQuery.eventId && !!tokenQuery.guestId && tokenOk === null;
   if ((!hydrated && !payload) || stillVerifying) {
-    return <main className="min-h-screen flex items-center justify-center" style={{ color: "var(--foreground-muted)" }}>טוען...</main>;
+    return <RsvpSkeleton />;
   }
 
   // Hard-reject when token URL was provided but failed verification — never

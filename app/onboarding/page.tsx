@@ -7,6 +7,7 @@ import { Header } from "@/components/Header";
 import { actions, useAppState } from "@/lib/store";
 import { useUser, userActions, type ObservanceLevel } from "@/lib/user";
 import { OBSERVANCE_DESCRIPTIONS, OBSERVANCE_LABELS } from "@/lib/israeliCalendar";
+import { fireConfettiOnce } from "@/lib/confetti";
 import { generateSigningKey } from "@/lib/crypto";
 import { useNow, daysUntil } from "@/lib/useNow";
 import {
@@ -183,6 +184,12 @@ function OnboardingInner() {
       createdAt: existing?.createdAt ?? new Date().toISOString(),
       guardianConsent: consentRecord,
     });
+    // First-event-created milestone: confetti once per session — `existing`
+    // was just narrowed to null by the `!existing` guard, so we use a fixed
+    // key. Subsequent visits won't re-fire (localStorage gate).
+    if (!existing) {
+      fireConfettiOnce("event-created-first", 1500);
+    }
     router.push("/dashboard");
   };
 

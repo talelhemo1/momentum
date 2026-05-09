@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAppState, actions } from "@/lib/store";
 import type { Vendor } from "@/lib/types";
 import { X, Send, ShieldCheck, Phone, Star } from "lucide-react";
+import { Avatar } from "./Avatar";
 
 const QUICK_REPLIES = [
   "האם פנוי בתאריך שלי?",
@@ -54,9 +55,7 @@ export function VendorChatModal({ vendor, onClose }: { vendor: Vendor; onClose: 
         {/* Header */}
         <div className="p-4 border-b flex items-center justify-between gap-3" style={{ borderColor: "var(--border)" }}>
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--gold-100)] to-[var(--gold-500)] flex items-center justify-center text-black font-bold shrink-0">
-              {vendor.name.charAt(0)}
-            </div>
+            <Avatar name={vendor.name} id={vendor.id} size={48} className="rounded-2xl" />
             <div className="min-w-0">
               <div className="font-bold flex items-center gap-1.5">
                 <span className="truncate">{vendor.name}</span>

@@ -23,6 +23,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { actions, useAppState } from "@/lib/store";
 import { Logo } from "@/components/Logo";
+import { RsvpSkeleton } from "@/components/skeletons/PageSkeletons";
 import { showToast } from "@/components/Toast";
 import { trackEvent } from "@/lib/analytics";
 import {
@@ -88,11 +89,7 @@ export default function LiveEventPage() {
   }, [eventId]);
 
   if (!hydrated) {
-    return (
-      <main className="min-h-screen flex items-center justify-center" style={{ color: "var(--foreground-muted)" }}>
-        טוען...
-      </main>
-    );
+    return <RsvpSkeleton />;
   }
 
   const event = state.event;

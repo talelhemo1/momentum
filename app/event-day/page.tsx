@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { ShareEventCard } from "@/components/ShareEventCard";
+import { EventDaySkeleton } from "@/components/skeletons/PageSkeletons";
 import { useAppState } from "@/lib/store";
 import { useUser } from "@/lib/user";
 import { VENDORS } from "@/lib/vendors";
@@ -96,7 +97,7 @@ export default function EventDayPage() {
     return (
       <>
         <Header />
-        <main className="flex-1 flex items-center justify-center" style={{ color: "var(--foreground-muted)" }}>טוען...</main>
+        <EventDaySkeleton />
       </>
     );
   }
