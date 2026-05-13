@@ -4,7 +4,9 @@ import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
+import { EmptyEventState } from "@/components/EmptyEventState";
 import { CompareSkeleton } from "@/components/skeletons/PageSkeletons";
+import { EmptyState } from "@/components/EmptyState";
 import { useAppState, actions } from "@/lib/store";
 import { useUser } from "@/lib/user";
 import { VENDORS } from "@/lib/vendors";
@@ -49,6 +51,11 @@ export default function ComparePage() {
       </>
     );
   }
+  // R17 P1#4: explicit empty-state when there's no event yet. Compare doesn't
+  // technically NEED an event to render the side-by-side cards, but landing
+  // here without one means the user skipped onboarding — show them the way
+  // back rather than render an empty page.
+  if (!state.event) return <EmptyEventState toolName="השוואת הספקים" />;
 
   return (
     <>
@@ -79,18 +86,12 @@ export default function ComparePage() {
           </div>
 
           {vendors.length === 0 ? (
-            <div className="card p-12 mt-10 text-center">
-              <div className="inline-flex w-16 h-16 rounded-2xl items-center justify-center mb-4" style={{ background: "var(--surface-2)", border: "1px dashed var(--border-strong)", color: "var(--accent)" }}>
-                <Sparkles size={28} />
-              </div>
-              <h3 className="text-xl font-bold">בחר ספקים להשוואה</h3>
-              <p className="mt-2 text-sm" style={{ color: "var(--foreground-soft)" }}>
-                בעמוד הספקים — לחץ על אייקון <Trophy size={14} className="inline text-[--accent]" /> בכל ספק (עד 3) — וחזור לכאן.
-              </p>
-              <Link href="/vendors" className="btn-gold mt-5 inline-flex items-center gap-2">
-                לעמוד הספקים
-              </Link>
-            </div>
+            <EmptyState
+              icon={<Trophy size={28} aria-hidden />}
+              title="בחר ספקים להשוואה"
+              description="בעמוד הספקים — לחץ על אייקון הגביע בכל ספק (עד 3) — וחזור לכאן לראות אותם זה לצד זה."
+              cta={{ label: "לעמוד הספקים", href: "/vendors" }}
+            />
           ) : (
             <div className="mt-10 grid gap-4" style={{ gridTemplateColumns: `repeat(${vendors.length}, minmax(0, 1fr))` }}>
               {vendors.map((vendor, i) => (

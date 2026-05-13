@@ -59,9 +59,12 @@ export function calcEnvelopeFromState(state: AppState): EnvelopeRecommendation {
   const costSource: "actual" | "estimate" = itemsTotal > 0 ? "actual" : "estimate";
 
   // Guest count: use confirmed heads when any have RSVP'd, else use the estimate.
+  // Use `??` not `||` so a legitimately-stored attendingCount=0 (declined-but-
+  // somehow-confirmed edge case, or a future "ghost" head) doesn't get
+  // silently bumped to 1, inflating the gift-per-head estimate.
   const confirmedHeads = state.guests
     .filter((g) => g.status === "confirmed")
-    .reduce((s, g) => s + (g.attendingCount || 1), 0);
+    .reduce((s, g) => s + (g.attendingCount ?? 1), 0);
   const guestCount = confirmedHeads > 0 ? confirmedHeads : event.guestEstimate;
   const countSource: "confirmed" | "estimate" = confirmedHeads > 0 ? "confirmed" : "estimate";
 
@@ -121,6 +124,135 @@ function makeNoData(type: EventType, typical: number): EnvelopeRecommendation {
   };
 }
 
+// ─── Relationship-based envelope norms (R18) ───────────────────────────────
+// Israeli social-circle norms for what a guest couple typically puts in the
+// envelope. Numbers are TYPICAL RANGES — not a rulebook. Sourced from public
+// wedding-planning communities + finance columns 2024-2025. The "typical"
+// midpoint is what we use for the headline calculation; min/max bracket the
+// reasonable spread so the UI can show both ends honestly.
+
+export type RelationshipType =
+  | "immediate-family"   // אחים, הורים, סבים
+  | "extended-family"    // דודים, בני דודים
+  | "close-friends"      // חברים מהבית/הצבא
+  | "friends"            // חברים רגילים
+  | "colleagues"         // עמיתי עבודה
+  | "acquaintances";     // מכרים, שכנים
+
+export interface RelationshipNorm {
+  id: RelationshipType;
+  label: string;
+  emoji: string;
+  /** טווח מקובל לזוג שמגיע יחד (₪). */
+  rangeMin: number;
+  rangeMax: number;
+  /** ממוצע מומלץ — הערך שמשמש לחישוב ה"צפוי". */
+  typical: number;
+  description: string;
+}
+
+export const RELATIONSHIP_NORMS: RelationshipNorm[] = [
+  {
+    id: "immediate-family",
+    label: "משפחה קרובה",
+    emoji: "❤️",
+    rangeMin: 1500,
+    rangeMax: 3000,
+    typical: 2000,
+    description: "הורים, אחים, אחיות, סבים — בדרך כלל הסכום הגדול ביותר",
+  },
+  {
+    id: "extended-family",
+    label: "משפחה רחוקה",
+    emoji: "👨‍👩‍👧",
+    rangeMin: 800,
+    rangeMax: 1500,
+    typical: 1000,
+    description: "דודים, בני דודים, חמים/חמות של אחים",
+  },
+  {
+    id: "close-friends",
+    label: "חברים קרובים",
+    emoji: "🤗",
+    rangeMin: 500,
+    rangeMax: 800,
+    typical: 600,
+    description: "חברים מהבית, הצבא, או מהלימודים — קשר עמוק",
+  },
+  {
+    id: "friends",
+    label: "חברים",
+    emoji: "🙂",
+    rangeMin: 350,
+    rangeMax: 500,
+    typical: 400,
+    description: "חברים מתקופות שונות בחיים — קשר טוב אבל לא יומיומי",
+  },
+  {
+    id: "colleagues",
+    label: "עמיתי עבודה",
+    emoji: "💼",
+    rangeMin: 250,
+    rangeMax: 400,
+    typical: 300,
+    description: "עמיתים מהעבודה, ראשי צוות, שותפים עסקיים",
+  },
+  {
+    id: "acquaintances",
+    label: "מכרים",
+    emoji: "👋",
+    rangeMin: 200,
+    rangeMax: 350,
+    typical: 250,
+    description: "שכנים, חברי ילדים, מכרים מהקהילה",
+  },
+];
+
+export interface RelationshipBreakdownInput {
+  /** Number of couples in each bucket (one envelope per couple). */
+  counts: Partial<Record<RelationshipType, number>>;
+}
+
+export interface RelationshipBreakdownResult {
+  totalExpected: number;
+  perCategory: Array<{
+    type: RelationshipType;
+    label: string;
+    emoji: string;
+    couples: number;
+    expectedAmount: number;
+    rangeMin: number;
+    rangeMax: number;
+  }>;
+  totalCouples: number;
+}
+
+/**
+ * Sum expected envelope intake from a per-category couple count.
+ * Pure function — re-runs cheaply on every state change in the UI.
+ */
+export function calcRelationshipBreakdown(
+  input: RelationshipBreakdownInput,
+): RelationshipBreakdownResult {
+  const perCategory = RELATIONSHIP_NORMS.map((norm) => {
+    const couples = input.counts[norm.id] ?? 0;
+    return {
+      type: norm.id,
+      label: norm.label,
+      emoji: norm.emoji,
+      couples,
+      expectedAmount: couples * norm.typical,
+      rangeMin: couples * norm.rangeMin,
+      rangeMax: couples * norm.rangeMax,
+    };
+  });
+
+  const totalExpected = perCategory.reduce((s, c) => s + c.expectedAmount, 0);
+  const totalCouples = perCategory.reduce((s, c) => s + c.couples, 0);
+
+  return { totalExpected, perCategory, totalCouples };
+}
+
 // Backwards-compatibility helper for older callers — now derives from a synthetic state.
 export function calcEnvelope(type: EventType, totalCost: number, guests: number): EnvelopeRecommendation {
   if (guests <= 0 || totalCost <= 0) return makeNoData(type, TYPICAL_GIFT_PER_GUEST[type] ?? 250);
@@ -138,6 +270,7 @@ export function calcEnvelope(type: EventType, totalCost: number, guests: number)
     guests: [],
     budget: [],
     selectedVendors: [],
+    savedVendors: [],
     checklist: [],
     tables: [],
     seatAssignments: {},

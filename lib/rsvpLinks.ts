@@ -13,27 +13,26 @@
 import { generateRsvpToken } from "./crypto";
 import { EVENT_CONFIG } from "./eventConfig";
 import type { EventInfo, Guest } from "./types";
+import { normalizeIsraeliPhone } from "./phone";
 
-/** Strip a trailing slash off `origin` so we don't end up with double slashes. */
 function trimOrigin(origin: string): string {
-  return origin.replace(/\/+$/, "");
+  return (origin ?? "").replace(/\/+$/, "");
 }
 
-/**
- * Build the RSVP URL a guest opens from WhatsApp. Mints the token on demand
- * if the guest doesn't have one yet — keeps caller code from worrying about
- * legacy guests who pre-date the token field.
- */
 export async function buildRsvpUrl(
   origin: string,
   event: Pick<EventInfo, "id" | "signingKey">,
   guest: Pick<Guest, "id" | "rsvpToken">,
 ): Promise<string> {
+  const cleaned = trimOrigin(origin);
+  if (!cleaned || !/^https?:\/\//i.test(cleaned)) {
+    throw new Error(`[momentum/rsvpLinks] buildRsvpUrl received invalid origin: "${origin}"`);
+  }
   const token = guest.rsvpToken
     ?? (event.signingKey ? await generateRsvpToken(event.id, guest.id, event.signingKey) : "");
   const params = new URLSearchParams({ e: event.id, g: guest.id });
   if (token) params.set("t", token);
-  return `${trimOrigin(origin)}/rsvp?${params.toString()}`;
+  return `${cleaned}/rsvp?${params.toString()}`;
 }
 
 /**
@@ -43,7 +42,9 @@ export async function buildRsvpUrl(
 function formatEventDate(date: string): string {
   if (!date) return "";
   const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return date;
+  // Invalid input (e.g. "2025-13-99") used to leak the raw string into the
+  // WhatsApp body. Return empty so the caller can omit the date line entirely.
+  if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString("he-IL", {
     weekday: "long",
     day: "2-digit",
@@ -69,14 +70,10 @@ export interface WhatsAppMessage {
   hasPhone: boolean;
 }
 
-/** Strip everything but digits, then prefix country code if needed. */
-function normalizePhone(raw: string): string {
-  const digits = (raw ?? "").replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.startsWith("972")) return digits;
-  if (digits.startsWith("0")) return "972" + digits.slice(1);
-  return digits;
-}
+// Phone normalization moved to lib/phone.ts so rsvpLinks/invitation/whatsapp
+// share one implementation. Old local copies had drift (no trim, no "00"
+// handling, no validation) which produced different "valid" answers for the
+// same input depending on which entry point ran.
 
 /**
  * Build the WhatsApp invitation message + wa.me URL for a single guest.
@@ -101,8 +98,8 @@ export async function buildWhatsAppMessage(
       "",
       `נשמח לדעת אם תוכלו להגיע ל${EVENT_CONFIG[event.type]?.label ?? "אירוע"} שלנו:`,
       "",
-      `📅 ${dateStr}`,
     ];
+    if (dateStr) body.push(`📅 ${dateStr}`);
     if (where) body.push(`📍 ${where}`);
     body.push("", "👇 אישור הגעה כאן (לוקח רגע):", url);
   } else if (kind === "final") {
@@ -111,8 +108,8 @@ export async function buildWhatsAppMessage(
       "",
       `מתרגשים לראות אותך מחר ב${EVENT_CONFIG[event.type]?.label ?? "אירוע"}!`,
       "",
-      `📅 ${dateStr}`,
     ];
+    if (dateStr) body.push(`📅 ${dateStr}`);
     if (where) body.push(`📍 ${where}`);
     body.push("", "פרטים מלאים ומפת השולחנות:", url);
   } else {
@@ -122,8 +119,8 @@ export async function buildWhatsAppMessage(
       "",
       `${subjects} שמחים להזמין אותך ל${EVENT_CONFIG[event.type]?.label ?? "אירוע"} שלנו.`,
       "",
-      `📅 ${dateStr}`,
     ];
+    if (dateStr) body.push(`📅 ${dateStr}`);
     if (where) body.push(`📍 ${where}`);
     body.push(
       "",
@@ -134,13 +131,17 @@ export async function buildWhatsAppMessage(
     );
   }
   const text = body.join("\n");
-  const phone = normalizePhone(guest.phone);
+  const { phone, valid } = normalizeIsraeliPhone(guest.phone);
+  // Only treat the number as dial-able if it parses as a real Israeli line.
+  // Partial inputs (e.g. a 5-digit typo) used to slip through the old
+  // `length >= 10` check and pop wa.me with garbage; now they degrade to the
+  // "no phone" path so the host gets the share dialog instead.
   return {
     text,
-    url: phone
+    url: valid
       ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
       : `https://wa.me/?text=${encodeURIComponent(text)}`,
-    hasPhone: phone.length >= 10,
+    hasPhone: valid,
   };
 }
 

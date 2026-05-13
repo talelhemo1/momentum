@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
+import { EmptyEventState } from "@/components/EmptyEventState";
 import { TimelineSkeleton } from "@/components/skeletons/PageSkeletons";
 import { useAppState, actions } from "@/lib/store";
 import { useUser } from "@/lib/user";
@@ -26,8 +27,8 @@ export default function TimelinePage() {
       router.replace("/signup");
       return;
     }
-    if (hydrated && !state.event) router.replace("/onboarding");
-  }, [userHydrated, user, hydrated, state.event, router]);
+    // R14: no-event handled by EmptyState below.
+  }, [userHydrated, user, router]);
 
   const grouped = useMemo(() => {
     // Use the explicit ChecklistItem[] type instead of `typeof state.checklist`
@@ -65,7 +66,7 @@ export default function TimelinePage() {
         return daysToEvent <= b.startDays && daysToEvent > b.endDays;
       }) ?? (daysToEvent <= 0 ? "day-of" : "early");
 
-  if (!hydrated || !state.event) {
+  if (!hydrated) {
     return (
       <>
         <Header />
@@ -73,6 +74,7 @@ export default function TimelinePage() {
       </>
     );
   }
+  if (!state.event) return <EmptyEventState toolName="ציר הזמן" />;
 
   const totalDone = state.checklist.filter((t) => t.done).length;
   const totalAll = state.checklist.length;
@@ -80,7 +82,7 @@ export default function TimelinePage() {
   return (
     <>
       <Header />
-      <main className="flex-1 pb-28 relative">
+      <main className="flex-1 relative">
         <div aria-hidden className="glow-orb glow-orb-gold w-[600px] h-[600px] -top-40 left-0 opacity-25" />
 
         <div className="max-w-6xl mx-auto px-5 sm:px-8 pt-10 relative z-10">

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
+import { EmptyEventState } from "@/components/EmptyEventState";
 import { PrintButton } from "@/components/PrintButton";
 import { BalanceSkeleton } from "@/components/skeletons/PageSkeletons";
 import { useAppState, actions } from "@/lib/store";
@@ -40,8 +41,8 @@ export default function BalancePage() {
       router.replace("/signup");
       return;
     }
-    if (hydrated && !state.event) router.replace("/onboarding");
-  }, [userHydrated, user, hydrated, state.event, router]);
+    // R14: no-event handled by EmptyState below.
+  }, [userHydrated, user, router]);
 
   // Eligible = anyone who actually came.
   const attended = useMemo(
@@ -68,16 +69,16 @@ export default function BalancePage() {
     const totalCost = state.budget.reduce((s, b) => s + (b.actual ?? b.estimated), 0)
       || (state.event?.budgetTotal ?? 0);
     const net = totalIncome - totalCost;
-    const totalHeads = attended.reduce((s, g) => s + (g.attendingCount || 1), 0);
+    const totalHeads = attended.reduce((s, g) => s + (g.attendingCount ?? 1), 0);
     const avgPerHead = totalHeads > 0 && filledCount > 0
-      ? Math.round(totalIncome / attended.filter((g) => g.envelopeAmount).reduce((sum, g) => sum + (g.attendingCount || 1), 0))
+      ? Math.round(totalIncome / attended.filter((g) => g.envelopeAmount).reduce((sum, g) => sum + (g.attendingCount ?? 1), 0))
       : 0;
     return { totalIncome, filledCount, totalCost, net, totalHeads, avgPerHead };
   }, [attended, state.budget, state.event]);
 
   const verdict = totals.net > 0 ? "profit" : totals.net < 0 ? "loss" : "balanced";
 
-  if (!hydrated || !state.event) {
+  if (!hydrated) {
     return (
       <>
         <Header />
@@ -85,6 +86,7 @@ export default function BalancePage() {
       </>
     );
   }
+  if (!state.event) return <EmptyEventState toolName="המאזן" />;
 
   const dateFmt = new Date(state.event.date).toLocaleDateString("he-IL", {
     day: "2-digit",
@@ -95,7 +97,7 @@ export default function BalancePage() {
   return (
     <>
       <Header />
-      <main className="flex-1 pb-28 relative">
+      <main className="flex-1 relative">
         <div aria-hidden className="glow-orb glow-orb-gold w-[600px] h-[600px] -top-40 left-0 opacity-30" />
 
         <div className="max-w-5xl mx-auto px-5 sm:px-8 pt-10 relative z-10">

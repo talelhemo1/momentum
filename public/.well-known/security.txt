@@ -1,0 +1,23 @@
+# Momentum — Security Policy
+# https://www.rfc-editor.org/rfc/rfc9116
+#
+# If you discover a security vulnerability, please report it via one of the
+# contact channels below. We respond within 72 hours and will credit you in
+# our hall of fame (with your permission).
+
+Contact: mailto:security@momentum.app
+Expires: 2027-05-08T00:00:00.000Z
+Preferred-Languages: he, en
+Canonical: https://momentum.app/.well-known/security.txt
+Policy: https://momentum.app/privacy
+Acknowledgments: https://momentum.app/security/hall-of-fame
+
+# Out of scope:
+#   - Issues already documented in our SECURITY.md (e.g. localStorage trust model).
+#   - Spam / abuse via WhatsApp invitation links (we use HMAC, not e2e identity).
+#   - Self-XSS via the browser console.
+#
+# Please do NOT:
+#   - Run automated scans without prior approval.
+#   - Access or modify data of users you don't own.
+#   - Publicly disclose details before we've had 90 days to patch.

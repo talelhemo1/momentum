@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Heebo } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 import { AssistantWidget } from "@/components/AssistantWidget";
 import { ToastHost } from "@/components/Toast";
@@ -45,11 +46,15 @@ const themeBootScript = `
 })();
 `;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // R12 §1H — read the per-request nonce that `middleware.ts` set on the
+  // incoming request. Apply it to every inline script we emit so the CSP
+  // (which now disallows `unsafe-inline` for scripts) lets them run.
+  const nonce = (await headers()).get("x-nonce") ?? "";
   return (
     <html
       lang="he"
@@ -57,7 +62,7 @@ export default function RootLayout({
       className={`${heebo.variable} h-full antialiased`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
       <body className="min-h-full flex flex-col">
         <ScrollProgress />

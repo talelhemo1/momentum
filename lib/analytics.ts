@@ -7,7 +7,9 @@
  * Cap: 500 most recent events to avoid unbounded growth in the host's storage.
  */
 
-const STORAGE_KEY = "momentum.analytics.events.v1";
+// R12 §3S — centralized.
+import { STORAGE_KEYS } from "./storage-keys";
+const STORAGE_KEY = STORAGE_KEYS.analyticsEvents;
 const MAX_EVENTS = 500;
 
 export interface AnalyticsEvent {
@@ -19,13 +21,33 @@ export interface AnalyticsEvent {
   at: string;
 }
 
+/** Runtime validator — tolerates older event shapes but rejects anything
+ *  that lacks the core fields we rely on at read time. */
+function isAnalyticsEvent(x: unknown): x is AnalyticsEvent {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  if (typeof o.name !== "string" || typeof o.at !== "string") return false;
+  // props is optional but, when present, must be a plain object.
+  if (o.props !== undefined && (typeof o.props !== "object" || o.props === null)) return false;
+  return true;
+}
+
 function read(): AnalyticsEvent[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as AnalyticsEvent[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    const filtered = parsed.filter(isAnalyticsEvent);
+    if (parsed.length > 0 && filtered.length < parsed.length / 2) {
+      // Major schema mismatch — overwrite once so we self-heal.
+      console.warn(
+        `[momentum/analytics] dropped ${parsed.length - filtered.length}/${parsed.length} malformed events; rewriting log.`,
+      );
+      write(filtered);
+    }
+    return filtered;
   } catch {
     return [];
   }

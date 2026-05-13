@@ -22,6 +22,15 @@
 import { actions } from "./store";
 import { getSupabase, SUPABASE_ENABLED } from "./supabase";
 import type { GuestStatus } from "./types";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { trackEvent } from "./analytics";
+
+/** Narrow runtime check — Supabase rows could carry "pending" or future
+ *  statuses we don't model in the client. Anything else is dropped with a
+ *  telemetry breadcrumb so we don't poison the local store. */
+function isFinalStatus(s: unknown): s is "confirmed" | "declined" | "maybe" {
+  return s === "confirmed" || s === "declined" || s === "maybe";
+}
 
 const CHANNEL_NAME = "momentum:rsvp:v1";
 
@@ -67,6 +76,11 @@ function bindMessageOnce() {
  * Subscribe to RSVP updates from any transport. Returns an unsubscribe fn.
  * The handler is called for every update — including ones the same tab just
  * published — so the dashboard sees them too.
+ *
+ * Refcounts the active subscriber set: the Supabase realtime channel is opened
+ * on the first subscriber and torn down when the last one leaves, so a
+ * mount/unmount cycle in dev (HMR) or in a route transition doesn't leak a new
+ * channel each time.
  */
 export function subscribeRsvpUpdates(handler: Handler): () => void {
   bindMessageOnce();
@@ -75,6 +89,11 @@ export function subscribeRsvpUpdates(handler: Handler): () => void {
   void wireSupabaseRealtime();
   return () => {
     handlers.delete(handler);
+    if (handlers.size === 0) {
+      // Last subscriber gone — drop the Supabase channel so a future
+      // re-subscribe starts fresh instead of stacking another one.
+      void teardownSupabaseRealtime();
+    }
   };
 }
 
@@ -98,7 +117,11 @@ export async function publishRsvpUpdate(
 
   // 1) Local store — already writes invitedAt/respondedAt and broadcasts
   // momentum:update for in-tab consumers.
-  actions.setRsvp(update.guestId, update.status as "confirmed" | "declined" | "maybe", update.attendingCount);
+  if (!isFinalStatus(update.status)) {
+    trackEvent("rsvp_unknown_status", { status: String(update.status), source: "self" });
+    return;
+  }
+  actions.setRsvp(update.guestId, update.status, update.attendingCount);
   if (update.notes) actions.updateGuest(update.guestId, { notes: update.notes });
 
   // 2) Cross-tab via BroadcastChannel.
@@ -115,8 +138,31 @@ export async function publishRsvpUpdate(
   // back to the sender by spec.
   handlers.forEach((h) => h({ ...update, source: "self" }));
 
-  // 3) Supabase (best-effort, fire-and-forget).
-  void pushToSupabase(update);
+  // 3) Supabase upsert. Mark this guest as "pending sync" so the host UI can
+  // show "N waiting to sync" until the upsert succeeds; on failure we leave
+  // the marker in place + emit telemetry so the dashboard can warn the host
+  // that their cloud copy is out of date.
+  pendingSyncIds.add(update.guestId);
+  pushToSupabase(update).then((ok) => {
+    if (ok) {
+      pendingSyncIds.delete(update.guestId);
+    } else {
+      trackEvent("rsvp_sync_failed", { guestId: update.guestId });
+    }
+  }).catch(() => {
+    // pushToSupabase already swallows rejections internally, but guard the
+    // chain anyway in case of future refactors.
+    trackEvent("rsvp_sync_failed", { guestId: update.guestId });
+  });
+}
+
+/** Set of guest ids whose Supabase upsert has not yet succeeded. Surfaced
+ *  via getPendingSyncCount() for a "N ממתינים לסנכרון" badge. */
+const pendingSyncIds = new Set<string>();
+
+/** Number of in-flight or failed RSVP upserts. Polled by SyncBadge. */
+export function getPendingSyncCount(): number {
+  return pendingSyncIds.size;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -125,14 +171,13 @@ export async function publishRsvpUpdate(
 // a separate, public-write table with its own RLS policy keyed by token.
 // ──────────────────────────────────────────────────────────────────────
 
-let supabaseWired = false;
+let supabaseChannel: RealtimeChannel | null = null;
 
 async function wireSupabaseRealtime() {
-  if (supabaseWired) return;
+  if (supabaseChannel) return;
   if (!SUPABASE_ENABLED) return;
   const supabase = getSupabase();
   if (!supabase) return;
-  supabaseWired = true;
   // Listen for inserts/updates on the rsvps table. We don't filter by
   // event_id at the channel level — the host is on their device, only their
   // event will be sending through here in practice, and filter-by-RLS keeps
@@ -145,7 +190,9 @@ async function wireSupabaseRealtime() {
     notes?: string;
     responded_at?: string;
   };
-  supabase
+  // Save the channel reference BEFORE .subscribe() so a fast re-subscribe
+  // doesn't double-create. Setting it null again happens in teardown.
+  supabaseChannel = supabase
     .channel("rsvps")
     .on(
       "postgres_changes",
@@ -153,22 +200,44 @@ async function wireSupabaseRealtime() {
       (payload: { new?: RsvpRow }) => {
         const row = payload.new;
         if (!row || !row.guest_id || !row.event_id || !row.status) return;
+        if (!isFinalStatus(row.status)) {
+          trackEvent("rsvp_unknown_status", { status: String(row.status), source: "supabase" });
+          return;
+        }
+        // Capture the narrowed status into a local so TS keeps it on the
+        // setRsvp call below (RsvpUpdate.status widens it back to GuestStatus).
+        const finalStatus: "confirmed" | "declined" | "maybe" = row.status;
         const update: RsvpUpdate = {
           eventId: row.event_id,
           guestId: row.guest_id,
-          status: row.status,
-          attendingCount: typeof row.attending_count === "number" ? row.attending_count : 1,
+          status: finalStatus,
+          // declined rows default to 0 attendees — otherwise a "no" would
+          // count as +1 in the dashboard's confirmed sum.
+          attendingCount: typeof row.attending_count === "number"
+            ? row.attending_count
+            : (finalStatus === "declined" ? 0 : 1),
           notes: row.notes ?? undefined,
           respondedAt: row.responded_at ?? new Date().toISOString(),
           source: "supabase",
         };
         // Reflect in local store (idempotent — setRsvp writes whatever we pass).
-        actions.setRsvp(update.guestId, update.status as "confirmed" | "declined" | "maybe", update.attendingCount);
+        actions.setRsvp(update.guestId, finalStatus, update.attendingCount);
         if (update.notes) actions.updateGuest(update.guestId, { notes: update.notes });
         handlers.forEach((h) => h(update));
       },
-    )
-    .subscribe();
+    );
+  supabaseChannel.subscribe();
+}
+
+async function teardownSupabaseRealtime() {
+  if (!supabaseChannel) return;
+  try {
+    await supabaseChannel.unsubscribe();
+  } catch (e) {
+    console.error("[momentum/rsvpSync] supabase channel teardown failed:", e);
+  } finally {
+    supabaseChannel = null;
+  }
 }
 
 async function pushToSupabase(update: RsvpUpdate): Promise<boolean> {

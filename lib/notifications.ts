@@ -1,43 +1,49 @@
 /**
- * Notification scheduling — wraps every reminder/notification with Israeli
- * calendar awareness. Caller passes an "ideal" send time; we shift it forward
- * to the next allowed moment based on the user's `observanceLevel`.
+ * Notification scheduling — a planner + audit log for future reminders.
+ *
+ * The actual delivery layer is intentionally pluggable (a future Service
+ * Worker / native bridge would consume this queue). Today the module is a
+ * persisted record of "we'd like to send X at Y" — calling code can read
+ * the queue back via `getPendingNotifications`.
  *
  * Persistence: scheduled notifications are appended to localStorage under
- * `momentum.notifications.queue.v1` so a future Service Worker / native bridge
- * can pick them up. Today the function is mostly a planner + audit log; the
- * actual delivery layer is intentionally pluggable (browser Notification API
- * for in-session, but the queue is the source of truth).
+ * `momentum.notifications.queue.v1`.
  */
 
-import {
-  blockedReasons,
-  formatScheduledTime,
-  nextValidNotificationTime,
-  type ObservanceLevel,
-} from "./israeliCalendar";
-import { userActions } from "./user";
-
-const QUEUE_KEY = "momentum.notifications.queue.v1";
+// R12 §3S — centralized.
+import { STORAGE_KEYS } from "./storage-keys";
+const QUEUE_KEY = STORAGE_KEYS.notificationsQueue;
 const MAX_QUEUE = 200;
 
 export interface ScheduledNotification {
   /** Stable id so callers can update / cancel by reference. */
   id: string;
-  /** Recipient — the host user id; used to gate by their observance. */
+  /** Recipient — the host user id. */
   userId: string;
   /** Hebrew message that ends up in the OS notification body. */
   message: string;
-  /** When the caller WANTED us to send (ISO). */
-  idealAt: string;
-  /** When we'll actually send (ISO) — may be later than ideal due to Shabbat etc. */
+  /** When the notification should fire (ISO). */
   scheduledAt: string;
-  /** Whether we deferred from the ideal time, and why (for the audit log). */
-  delayReason?: string;
   /** Has this been delivered? Updated by the delivery layer (SW/in-session). */
   status: "pending" | "delivered" | "cancelled";
   /** ISO timestamp of when the queue entry was created. */
   createdAt: string;
+}
+
+/** Runtime validator — protects against stale schemas in localStorage where
+ *  e.g. `status` is missing. A loose `as` cast would silently let a malformed
+ *  entry through, then crash later when `n.userId` or `n.status` is undefined. */
+function isScheduledNotification(x: unknown): x is ScheduledNotification {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  return (
+    typeof o.id === "string" &&
+    typeof o.userId === "string" &&
+    typeof o.message === "string" &&
+    typeof o.scheduledAt === "string" &&
+    typeof o.createdAt === "string" &&
+    (o.status === "pending" || o.status === "delivered" || o.status === "cancelled")
+  );
 }
 
 function readQueue(): ScheduledNotification[] {
@@ -46,7 +52,17 @@ function readQueue(): ScheduledNotification[] {
     const raw = window.localStorage.getItem(QUEUE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as ScheduledNotification[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    const filtered = parsed.filter(isScheduledNotification);
+    if (parsed.length > 0 && filtered.length < parsed.length / 2) {
+      // Major schema mismatch — overwrite once so we stop paying the filter
+      // cost on every read. This also self-heals an old version's leftovers.
+      console.warn(
+        `[momentum/notifications] dropped ${parsed.length - filtered.length}/${parsed.length} malformed entries; rewriting queue.`,
+      );
+      writeQueue(filtered);
+    }
+    return filtered;
   } catch {
     return [];
   }
@@ -61,57 +77,59 @@ function writeQueue(q: ScheduledNotification[]) {
   }
 }
 
-/** Resolve the active user's observance level. Defaults to "secular" if unknown. */
-function getObservance(): ObservanceLevel {
-  const u = userActions.getSnapshot();
-  return u?.observanceLevel ?? "secular";
+/**
+ * Generate a unique notification id. Two reminders scheduled in the same
+ * millisecond (e.g. "30h before AND 6h before" enqueued together in a loop)
+ * used to share `n-${Date.now()}` and collide; markDelivered would only
+ * mark one. Each id now carries a random suffix.
+ */
+function makeNotificationId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Prefer crypto.getRandomValues over Math.random where available — the
+  // former is well-distributed across all browsers we ship to.
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const arr = new Uint8Array(8);
+    crypto.getRandomValues(arr);
+    const hex = Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+    return `n-${Date.now()}-${hex}`;
+  }
+  return `n-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export interface ScheduleNotificationInput {
   /** Hebrew body. The OS notification title is set automatically. */
   message: string;
-  /** When the caller WANTS this to fire. Date or ISO string. */
-  idealTime: Date | string;
+  /** When the notification should fire. Date or ISO string. */
+  scheduledAt: Date | string;
   /** The host user id this reminder belongs to. */
   userId: string;
-  /** Optional override of the user's observance — useful for tests. */
-  observance?: ObservanceLevel;
 }
 
 /**
- * Schedule a notification, deferring around Shabbat/holidays/mourning periods
- * based on the user's observance level.
+ * Schedule a notification. Returns the persisted queue entry.
  *
- * Returns the persisted queue entry. The function is synchronous and side-
- * effecting only on localStorage; nothing is fired right now even if the
- * scheduledAt is in the past — that's the delivery layer's job.
+ * Refuses to schedule for the past (allows a 60s grace window for clock
+ * skew); anything earlier is almost certainly a UI bug or a wonky system
+ * clock and we'd rather throw loudly than fire something instantly.
  */
 export function scheduleNotification(input: ScheduleNotificationInput): ScheduledNotification {
-  const ideal = input.idealTime instanceof Date ? input.idealTime : new Date(input.idealTime);
-  const observance = input.observance ?? getObservance();
-  const scheduled = nextValidNotificationTime(ideal, observance);
-  const wasDeferred = scheduled.getTime() !== ideal.getTime();
-  const reasons = wasDeferred ? blockedReasons(ideal, observance) : [];
-  const delayReason = wasDeferred ? reasons.map((r) => r.label).join(" + ") : undefined;
+  const scheduled = input.scheduledAt instanceof Date
+    ? input.scheduledAt
+    : new Date(input.scheduledAt);
+  if (scheduled.getTime() < Date.now() - 60_000) {
+    throw new Error("scheduled time is in the past");
+  }
 
   const entry: ScheduledNotification = {
-    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `n-${Date.now()}`,
+    id: makeNotificationId(),
     userId: input.userId,
     message: input.message,
-    idealAt: ideal.toISOString(),
     scheduledAt: scheduled.toISOString(),
-    delayReason,
     status: "pending",
     createdAt: new Date().toISOString(),
   };
-
-  if (wasDeferred) {
-    // Telemetry-friendly log so the host can see why a reminder slid.
-    // Format chosen to be grep-able in console + preserved in dev tools.
-    console.log(
-      `🕯️ Reminder delayed due to ${delayReason} — sending ${formatScheduledTime(scheduled)}`,
-    );
-  }
 
   const q = readQueue();
   q.push(entry);

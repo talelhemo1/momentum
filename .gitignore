@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# project-local cloudflared binary (downloaded by scripts/tunnel-and-dev.sh
+# on first run; ~36MB, never committed). Bring-your-own-bin works fine too.
+/bin/
+
 # vercel
 .vercel
 

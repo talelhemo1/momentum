@@ -1,5 +1,6 @@
 import type { EventInfo, Guest, GuestStatus } from "./types";
 import { hmacSign, hmacVerify, bytesToBase64Url, base64UrlToBytes } from "./crypto";
+import { normalizeIsraeliPhone } from "./phone";
 
 /**
  * The invitation system works without a backend by encoding all needed data
@@ -168,6 +169,10 @@ export function decodeResponse(s: string): ResponsePayload | null {
     const payload = JSON.parse(json) as ResponsePayload;
     if (!payload || payload.v !== APP_VERSION) return null;
     if (!payload.gid || !payload.eid || !payload.s) return null;
+    // Reject if `c` is missing or non-numeric, but allow 0 — declined guests
+    // legitimately respond with attendingCount=0. The previous truthiness
+    // check (`!payload.c`) folded 0 into the missing-field branch.
+    if (typeof payload.c !== "number" || Number.isNaN(payload.c)) return null;
     return payload;
   } catch {
     return null;
@@ -180,13 +185,20 @@ export function decodeResponse(s: string): ResponsePayload | null {
  * pair can't be forged or replayed for other invitations.
  */
 export async function buildRsvpUrl(origin: string, event: EventInfo, guest: Guest): Promise<string> {
+  const cleaned = (origin ?? "").replace(/\/+$/, "");
+  if (!cleaned || !/^https?:\/\//i.test(cleaned)) {
+    // Refuse to ship a relative URL into a WhatsApp body. Callers should pass
+    // a valid origin from getPublicOrigin(). Throwing keeps the bug loud
+    // instead of silently mailing a broken link to every guest.
+    throw new Error(`[momentum/invitation] buildRsvpUrl received invalid origin: "${origin}"`);
+  }
   const d = encodeInvitation(event, guest);
   const params = new URLSearchParams({ d });
   if (event.signingKey) {
     const sig = await hmacSign(event.signingKey, `${event.id}|${guest.id}`);
     params.set("sig", sig);
   }
-  return `${origin.replace(/\/$/, "")}/rsvp?${params.toString()}`;
+  return `${cleaned}/rsvp?${params.toString()}`;
 }
 
 /**
@@ -205,7 +217,11 @@ export function buildInboxUrl(
   const r = encodeResponse(payload);
   const params = new URLSearchParams({ r });
   if (passthroughSignature) params.set("sig", passthroughSignature);
-  return `${origin.replace(/\/$/, "")}/inbox?${params.toString()}`;
+  const cleaned = (origin ?? "").replace(/\/+$/, "");
+  if (!cleaned || !/^https?:\/\//i.test(cleaned)) {
+    throw new Error(`[momentum/invitation] buildInboxUrl received invalid origin: "${origin}"`);
+  }
+  return `${cleaned}/inbox?${params.toString()}`;
 }
 
 /** Verify an inbox response signature. Returns true if signature matches. */
@@ -227,11 +243,21 @@ export async function verifyInvitationSignature(
   return hmacVerify(signingKey, `${payload.e.id}|${payload.g.id}`, signature);
 }
 
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.startsWith("972")) return digits;
-  if (digits.startsWith("0")) return "972" + digits.slice(1);
-  return digits;
+/**
+ * Format an event date for the WhatsApp body. Returns "" for missing or
+ * malformed dates so the caller can omit the line entirely instead of
+ * leaking "Invalid Date" into the user-facing message.
+ */
+function formatHebrewDate(raw: string): string {
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("he-IL", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 /** Build the WhatsApp link the host opens to send the invitation to a single guest. */
@@ -240,14 +266,9 @@ export async function buildHostInvitationWhatsappLink(
   event: EventInfo,
   guest: Guest,
 ): Promise<{ url: string; rsvpUrl: string; valid: boolean }> {
-  const phone = normalizePhone(guest.phone);
+  const { phone, valid } = normalizeIsraeliPhone(guest.phone);
   const rsvpUrl = await buildRsvpUrl(origin, event, guest);
-  const date = new Date(event.date).toLocaleDateString("he-IL", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  const date = formatHebrewDate(event.date);
 
   const subjects = event.partnerName
     ? `${event.hostName} ו${event.partnerName}`
@@ -258,8 +279,8 @@ export async function buildHostInvitationWhatsappLink(
     "",
     `${subjects} מתכבדים להזמין אותך לאירוע שלהם.`,
     "",
-    `📅 ${date}`,
   ];
+  if (date) lines.push(`📅 ${date}`);
   const where = [event.synagogue, event.city].filter(Boolean).join(" · ");
   if (where) lines.push(`📍 ${where}`);
   lines.push(
@@ -271,11 +292,11 @@ export async function buildHostInvitationWhatsappLink(
   );
   const text = lines.join("\n");
 
-  const url = phone
+  const url = valid
     ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
     : `https://wa.me/?text=${encodeURIComponent(text)}`;
 
-  return { url, rsvpUrl, valid: phone.length >= 10 };
+  return { url, rsvpUrl, valid };
 }
 
 /** Build the WhatsApp link a guest opens to send their answer back to the host. */
@@ -293,7 +314,9 @@ export function buildGuestResponseWhatsappLink(
    *  so it's purely a courtesy message — keeps the schema stable. */
   note?: string,
 ): { url: string; importUrl: string; valid: boolean } {
-  const phone = event.hostPhone ? normalizePhone(event.hostPhone) : "";
+  const { phone, valid } = event.hostPhone
+    ? normalizeIsraeliPhone(event.hostPhone)
+    : { phone: "", valid: false };
   const importUrl = buildInboxUrl(
     origin,
     {
@@ -332,9 +355,9 @@ export function buildGuestResponseWhatsappLink(
   );
   const text = lines.join("\n");
 
-  const url = phone
+  const url = valid
     ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
     : `https://wa.me/?text=${encodeURIComponent(text)}`;
 
-  return { url, importUrl, valid: phone.length >= 10 };
+  return { url, importUrl, valid };
 }

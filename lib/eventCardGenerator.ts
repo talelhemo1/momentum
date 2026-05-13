@@ -91,8 +91,16 @@ const PALETTES: Record<CardTemplate, Palette> = {
 /** Hebrew weekday + day month + year, e.g. "יום שבת, 22 באוגוסט 2026". */
 function fmtDate(iso: string): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
+  // Bare "YYYY-MM-DD" is parsed as UTC midnight by `new Date(...)`. In
+  // IST that lands on the previous calendar day for users west of UTC and
+  // shifts the weekday for everyone — the share-card date used to drift
+  // by +/- 1 depending on host timezone. Build a local-time Date for the
+  // bare date case so toLocaleDateString picks the intended day.
+  const bareDateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const d = bareDateMatch
+    ? new Date(Number(bareDateMatch[1]), Number(bareDateMatch[2]) - 1, Number(bareDateMatch[3]))
+    : new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString("he-IL", {
     weekday: "long",
     day: "2-digit",

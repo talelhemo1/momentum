@@ -2,32 +2,31 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import {
-  LayoutDashboard,
-  Users,
-  Building2,
-  Armchair,
-  MoreHorizontal,
-} from "lucide-react";
+import { NAV_ITEMS } from "@/lib/navigation";
 
 /**
- * Mobile-only bottom navigation. Sticky to the viewport bottom, 5 items, gold
- * accent on the active item with a thin indicator above.
+ * Mobile-only bottom navigation. Sticky to the viewport bottom, gold accent
+ * on the active item with a thin indicator above. Items + order come from
+ * `lib/navigation.ts` (NAV_ITEMS), a 5-item icon set tuned for the 5-column
+ * grid. The desktop Header uses a separate, longer `HEADER_NAV` from the
+ * same module — see that file for the rationale.
  *
- * Hidden on outbound / pre-onboarding pages where the nav would distract from
- * the marketing flow (`/`, `/signup`, `/rsvp`, `/live/*`, `/privacy`, `/terms`,
- * `/pricing`). Hidden on desktop via `md:hidden`.
+ * Hidden on outbound / pre-onboarding pages where the nav would distract
+ * from the marketing flow (`/`, `/signup`, `/rsvp`, `/live/*`, `/privacy`,
+ * `/terms`, `/pricing`). Hidden on desktop via `md:hidden`.
  */
 
-const ITEMS = [
-  { href: "/dashboard", label: "המסע", icon: LayoutDashboard },
-  { href: "/guests", label: "מוזמנים", icon: Users },
-  { href: "/vendors", label: "ספקים", icon: Building2 },
-  { href: "/seating", label: "הושבה", icon: Armchair },
-  { href: "/settings", label: "עוד", icon: MoreHorizontal },
-] as const;
-
-const HIDDEN_PREFIXES = ["/signup", "/rsvp", "/live", "/privacy", "/terms", "/pricing", "/onboarding", "/start", "/auth"];
+const HIDDEN_PREFIXES = [
+  "/signup",
+  "/rsvp",
+  "/live",
+  "/privacy",
+  "/terms",
+  "/pricing",
+  "/onboarding",
+  "/start",
+  "/auth",
+];
 
 export function MobileBottomNav() {
   const pathname = usePathname() ?? "/";
@@ -51,10 +50,10 @@ export function MobileBottomNav() {
       }}
     >
       <ul className="grid grid-cols-5 h-14">
-        {ITEMS.map((item) => {
+        {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           // Match by prefix so /vendors/anything still highlights "ספקים".
-          // None of our ITEMS hrefs are "/", so a plain prefix check is safe.
+          // None of our NAV_ITEMS hrefs are "/", so a plain prefix check is safe.
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (

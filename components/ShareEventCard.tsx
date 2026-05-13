@@ -22,8 +22,10 @@ import { trackEvent } from "@/lib/analytics";
 
 interface Props {
   event: EventInfo;
-  /** Public RSVP / live URL the QR will point to. */
-  qrTarget: string;
+  /** Public RSVP / live URL the QR will point to. `null` means we don't
+   *  have a public origin configured — render a notice instead of a QR
+   *  pointing at a relative path (which phones can't open). */
+  qrTarget: string | null;
 }
 
 export function ShareEventCard({ event, qrTarget }: Props) {
@@ -36,12 +38,23 @@ export function ShareEventCard({ event, qrTarget }: Props) {
   // useRef keeps it out of React's snapshot churn.
   const blobRef = useRef<Blob | null>(null);
 
+  // R12 §2K — track every object URL we've allocated so unmount frees them
+  // all, even those that didn't make it into state (cancelled mid-render).
+  // The previous code captured `previewUrl` from a stale closure on
+  // cleanup, leaking URLs every re-render and on unmount.
+  const allocatedUrlsRef = useRef<Set<string>>(new Set());
+
   // Re-render the preview whenever the template, event, or qrTarget changes.
   // The async render is wrapped with a `cancelled` guard so a fast template
   // switch doesn't show a stale preview.
   useEffect(() => {
+    if (!qrTarget) return; // no public URL → nothing to render in the card
     let cancelled = false;
     let lastUrl: string | null = null;
+    // Capture the Set so the cleanup function below doesn't read
+    // `ref.current` at unmount time (lint rule complains, and the
+    // instance is stable across the component's life either way).
+    const allocated = allocatedUrlsRef.current;
     // setBusy(true) BEFORE the async kickoff would trip
     // `react-hooks/set-state-in-effect`. Schedule it on a microtask so it's
     // not "synchronously inside the effect body" — same effect for the user
@@ -55,8 +68,12 @@ export function ShareEventCard({ event, qrTarget }: Props) {
         blobRef.current = blob;
         const url = blobToObjectUrl(blob);
         lastUrl = url;
+        allocated.add(url);
         setPreviewUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
+          if (prev) {
+            URL.revokeObjectURL(prev);
+            allocated.delete(prev);
+          }
           return url;
         });
       })
@@ -68,14 +85,50 @@ export function ShareEventCard({ event, qrTarget }: Props) {
       });
     return () => {
       cancelled = true;
-      // If we created an object URL on this run but never made it to state,
-      // free it now. The active URL is freed by the next render's setPreviewUrl.
-      if (lastUrl && lastUrl !== previewUrl) URL.revokeObjectURL(lastUrl);
+      // If we created an object URL on this run but state never got it,
+      // release it now. The actively-displayed URL is owned by the next
+      // setPreviewUrl call (which releases the previous one).
+      if (lastUrl) {
+        URL.revokeObjectURL(lastUrl);
+        allocated.delete(lastUrl);
+      }
     };
-    // We deliberately don't include previewUrl — its only role here is the URL
-    // cleanup helper above; including it would cause a render loop.
+    // R12 §3O — destructure event so we depend only on the fields that
+    // actually affect the rendered card. Re-rendering on every event
+    // mutation (e.g., updating a guest count) wasted a canvas re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event, template, qrTarget]);
+  }, [event.id, event.date, event.hostName, event.partnerName, template, qrTarget]);
+
+  // R12 §2K — final sweep on unmount. We capture the Set on mount so the
+  // lint rule for "ref.current may change before cleanup runs" is happy.
+  // The Set instance stays the same for the component's lifetime, so the
+  // captured `urls` reference and `ref.current` always point to the same
+  // object — clearing one clears the other.
+  useEffect(() => {
+    const urls = allocatedUrlsRef.current;
+    return () => {
+      for (const u of urls) URL.revokeObjectURL(u);
+      urls.clear();
+    };
+  }, []);
+
+  // No public origin → no QR target → no usable share card. Earlier the
+  // fallback rendered a QR pointing at a relative `/live/<id>` path, which
+  // phones can't open ("ERR_CONNECTION_REFUSED"). Tell the host explicitly.
+  if (!qrTarget) {
+    return (
+      <div
+        className="card p-5 text-sm leading-relaxed"
+        style={{
+          background: "rgba(245, 158, 11, 0.08)",
+          border: "1px solid rgba(245, 158, 11, 0.4)",
+          color: "rgb(252, 211, 77)",
+        }}
+      >
+        להפעלת QR ושיתוף — הגדר את <code className="ltr-num">NEXT_PUBLIC_SITE_URL</code> ב-<code>.env.local</code> (או הרץ <code>npm run dev:public</code> כדי שייווצר tunnel ציבורי אוטומטית).
+      </div>
+    );
+  }
 
   const onShare = async () => {
     if (!blobRef.current) return;

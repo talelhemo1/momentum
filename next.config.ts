@@ -1,7 +1,72 @@
 import type { NextConfig } from "next";
 
+/**
+ * Security headers applied to every response.
+ *
+ * Content-Security-Policy moved to `middleware.ts` (R12 §1H) so each
+ * request gets a fresh per-request nonce — `unsafe-inline` is no longer
+ * in the script-src. The static headers below still apply globally.
+ */
+
+const isDev = process.env.NODE_ENV === "development";
+
+const SECURITY_HEADERS = [
+  // CSP is set per-request in middleware.ts so the nonce changes every
+  // page load. See R12 §1H for the rationale.
+  // Clickjacking protection: nobody can iframe our site.
+  { key: "X-Frame-Options", value: "DENY" },
+  // Stops MIME-type sniffing attacks.
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  // Don't leak full URLs to other origins.
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // Disable powerful APIs we never use.
+  {
+    key: "Permissions-Policy",
+    value: [
+      "camera=()",
+      "microphone=()",
+      "geolocation=()",
+      "interest-cohort=()",
+      "payment=()",
+      "usb=()",
+      "magnetometer=()",
+      "gyroscope=()",
+      "accelerometer=()",
+    ].join(", "),
+  },
+  // HTTPS-only for the next 2 years (production only).
+  ...(isDev
+    ? []
+    : [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }]),
+  // Limit cross-origin embedding/opening.
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+];
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Don't advertise that we run Next.js (small recon hardening).
+  poweredByHeader: false,
+
+  // Allow HMR / dev assets to be fetched when the app is reached via a
+  // cloudflared tunnel (or any LAN host). Required as of Next.js 16+, which
+  // blocks cross-origin dev resources by default.
+  allowedDevOrigins: [
+    "*.trycloudflare.com",
+    "*.ngrok-free.app",
+    "*.ngrok.io",
+    "192.168.1.34",
+    "192.168.0.0/16",
+  ],
+
+  async headers() {
+    return [
+      {
+        // Apply security headers to every route.
+        source: "/:path*",
+        headers: SECURITY_HEADERS,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

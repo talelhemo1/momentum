@@ -147,6 +147,16 @@ body {
     radial-gradient(700px 400px at 0% 90%, var(--bg-radial-3), transparent 70%);
   background-color: var(--background);
   background-attachment: fixed;
+  /* R12 §4V — make room for the mobile bottom-nav (56px tall) plus the
+     iOS home indicator (env(safe-area-inset-bottom)). One global rule
+     means individual pages no longer need to repeat `pb-24` and risk
+     forgetting it. Desktop has no bottom-nav so the padding goes away. */
+  padding-bottom: max(env(safe-area-inset-bottom) + 56px, 64px);
+}
+@media (min-width: 768px) {
+  body {
+    padding-bottom: 0;
+  }
 }
 
 ::selection { background: var(--accent); color: var(--background); }
@@ -451,11 +461,36 @@ body {
   0%, 100% { transform: translateZ(0) translateY(0); }
   50% { transform: translateZ(8px) translateY(-2px); }
 }
+
+/* table-float is gated through a className so we can switch it off in bulk.
+   The animation-delay is set inline per-table so multiple tables don't
+   bob in lockstep. ".table-floating" → opt-in; absence → static. */
+.table-3d.table-floating {
+  animation: table-float 6s ease-in-out infinite;
+}
+
+/* Dense floors (>10 tables) drop the float entirely — it was the single
+   biggest GPU hit on big events. Set as a data-attribute by the seating
+   page so it flips deterministically based on tables.length. */
+[data-many-tables="true"] .table-3d.table-floating,
+[data-many-tables="true"] .table-3d {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-3d.table-floating { animation: none !important; }
+}
 .table-3d {
   position: relative;
   transform-style: preserve-3d;
   transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
+  /* Browser-level virtualization: tables off-screen skip rendering work.
+     contain-intrinsic-size keeps the scroll container the right height
+     before the dimensions are measured. Values are approximate — the
+     real card width is the grid column, height ≈ label + circle + count. */
+  content-visibility: auto;
+  contain-intrinsic-size: 240px 320px;
 }
 .table-3d:hover { transform: translateZ(28px) scale(1.04); }
 
@@ -635,13 +670,12 @@ body {
   animation: table-full-celebrate 1100ms ease-out;
 }
 
-/* Idle hover gives chairs a tiny rocking motion to imply life */
-@keyframes chair-idle {
-  0%, 100% { transform: scale(1.2) rotate(0deg); }
-  50%      { transform: scale(1.22) rotate(2deg); }
-}
+/* (chair-idle removed — it was firing an infinite animation on every filled
+   chair across every non-active table. On a 50-table floor that's ~500
+   concurrent transforms, which crushed FPS on mid-range devices. The
+   one-shot chair-fill below is plenty of life — chairs still bounce in.) */
 .table-3d:not(.active) .chair.filled {
-  animation: chair-fill 600ms cubic-bezier(0.34, 1.56, 0.64, 1), chair-idle 4s ease-in-out 600ms infinite;
+  animation: chair-fill 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Soft shadow under each table */
@@ -660,6 +694,74 @@ body {
   transition: opacity 300ms ease;
 }
 .table-3d:hover::after { opacity: 0.7; }
+
+/* ─────────────── Table label + number (in front of the circle) ─────────────── */
+/* Sits above the circular surface so chairs/glow/scan overlays can never
+   obscure it. translateZ keeps it on the same 3D plane as the table top so
+   it tilts naturally with the floor. */
+.table-name-label {
+  position: relative;
+  z-index: 3;
+  margin-bottom: 10px;
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+  background: linear-gradient(135deg, rgba(244, 222, 169, 0.18), rgba(168, 136, 74, 0.10));
+  border: 1px solid var(--border-gold);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow:
+    0 4px 14px -4px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: translateZ(40px);
+  transition: transform 250ms ease, border-color 250ms ease, background 250ms ease;
+}
+.table-3d:hover .table-name-label {
+  transform: translateZ(60px) scale(1.04);
+}
+.table-3d.active .table-name-label {
+  background: linear-gradient(135deg, rgba(244, 222, 169, 0.35), rgba(168, 136, 74, 0.22));
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateZ(140px) scale(1.05);
+  box-shadow:
+    0 6px 24px -4px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* The big "12" inside the circle — primary identifier for shouting across
+   the venue. Gold gradient text on top of a subtle dark backplate so the
+   chairs around the perimeter can't visually compete. */
+.table-number-display {
+  font-size: clamp(34px, 4.2vw, 56px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  margin-top: 2px;
+  background: linear-gradient(180deg, var(--gold-100) 0%, var(--accent) 55%, var(--gold-500) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5));
+}
+.table-3d.over .table-number-display {
+  background: linear-gradient(180deg, rgb(254, 202, 202), rgb(248, 113, 113));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
 
 @keyframes fade-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .fade-up { animation: fade-up 500ms ease-out both; }
@@ -681,6 +783,15 @@ body {
   100% { box-shadow: 0 0 0 0 rgba(212,176,104,0.0); }
 }
 .rsvp-glow { animation: rsvp-glow 1700ms ease-out; }
+
+/* Counter-delta pulse: gold ring blooms outward when a stat tile changes value. */
+@keyframes stat-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(212,176,104,0); }
+  20%  { box-shadow: 0 0 0 6px rgba(212,176,104,0.45); }
+  100% { box-shadow: 0 0 0 0 rgba(212,176,104,0); }
+}
+.stat-pulse { animation: stat-pulse 800ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .stat-pulse { animation: none; } }
 
 @keyframes scale-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
 .scale-in { animation: scale-in 350ms ease-out both; }
@@ -840,5 +951,76 @@ select:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .ken-burns, .heart-pulse, .skeleton-shimmer {
     animation: none !important;
+  }
+}
+
+/* ============== Seating page animations ============== */
+
+/* Guest assigned to table — table briefly celebrates */
+@keyframes table-receive {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(212,176,104,0); }
+  35%  { transform: scale(1.04); box-shadow: 0 0 0 14px rgba(212,176,104,0.35); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(212,176,104,0); }
+}
+.table-receive { animation: table-receive 600ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* Empty chair gently pulses to invite a drop */
+@keyframes chair-invite {
+  0%, 100% { transform: scale(1); opacity: 0.65; }
+  50%      { transform: scale(1.06); opacity: 0.9; }
+}
+.chair-invite { animation: chair-invite 2.4s ease-in-out infinite; }
+
+/* Smart arrangement "scan" — sweeps a gold line across the table */
+@keyframes arrangement-scan {
+  0%   { transform: translateX(-100%); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+.arrangement-scan {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(244,222,169,0.4), transparent);
+  pointer-events: none;
+  animation: arrangement-scan 1.4s ease-in-out;
+  border-radius: inherit;
+  /* Sit BEHIND chairs/labels — the scan reads as a sweep on the surface,
+     not as an opaque overlay covering the table content. */
+  z-index: 0;
+}
+
+/* Guest chip lands at seat — bounce in from above */
+@keyframes guest-land {
+  0%   { transform: translateY(-12px) scale(0.6); opacity: 0; }
+  60%  { transform: translateY(2px) scale(1.05); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.guest-land { animation: guest-land 380ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* Guest removed — soft fade + shrink before unmount */
+@keyframes guest-leave {
+  0%   { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.8); opacity: 0; }
+}
+.guest-leave { animation: guest-leave 240ms ease-in forwards; }
+
+/* Drop zone hover — table glows when guest hovering above */
+.table-drop-active {
+  box-shadow: 0 0 0 3px var(--accent), 0 0 24px rgba(212,176,104,0.5);
+  transform: scale(1.02);
+  transition: box-shadow 180ms ease-out, transform 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-receive,
+  .chair-invite,
+  .arrangement-scan,
+  .guest-land,
+  .guest-leave {
+    animation: none !important;
+  }
+  .table-drop-active {
+    transform: none !important;
   }
 }

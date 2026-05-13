@@ -29,6 +29,8 @@ import {
   CreditCard,
   HelpCircle,
   X,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -53,9 +55,35 @@ export default function SettingsPage() {
   }, []);
 
   const requestNotifications = async () => {
-    if (typeof Notification === "undefined") return;
-    const result = await Notification.requestPermission();
-    setNotifyEnabled(result);
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      showToast("הדפדפן שלך לא תומך בהתראות", "info");
+      return;
+    }
+    if (Notification.permission === "granted") {
+      setNotifyEnabled("granted");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      showToast("ההתראות חסומות בדפדפן — אפשר להפעיל בהגדרות הדפדפן", "info");
+      return;
+    }
+    // iOS PWA quirk: Notification.requestPermission() can hang forever and
+    // leave the toggle stuck in "מפעיל" state. Race against a 5s timeout so
+    // the UI always recovers, even when the underlying API never resolves.
+    try {
+      const permission = await Promise.race<NotificationPermission>([
+        Notification.requestPermission(),
+        new Promise<NotificationPermission>((_, reject) =>
+          window.setTimeout(() => reject(new Error("timeout")), 5000),
+        ),
+      ]);
+      setNotifyEnabled(permission);
+      if (permission !== "granted") {
+        showToast("לא ניתן הרשאת התראות", "info");
+      }
+    } catch {
+      showToast("לא הצלחנו להפעיל התראות. נסה שוב מהדפדפן ישירות", "error");
+    }
   };
 
   const exportData = () => {
@@ -72,6 +100,7 @@ export default function SettingsPage() {
       tables: state.tables,
       seatAssignments: state.seatAssignments,
       selectedVendors: state.selectedVendors,
+      savedVendors: state.savedVendors,
       vendorChats: state.vendorChats,
       // Full state too — for backwards compatibility with the existing import flow.
       state,
@@ -99,9 +128,37 @@ export default function SettingsPage() {
       try {
         const parsed = JSON.parse(reader.result as string);
 
-        // Schema validation — reject files that don't look like an export.
+        // Top-level shape check.
         if (!parsed || typeof parsed !== "object" || !parsed.state || typeof parsed.state !== "object") {
           showToast("מבנה הקובץ לא תקין", "error");
+          return;
+        }
+
+        // Deep validation: every collection field must be an array (not a
+        // string or number), every nested object the shape we expect.
+        // Without this, a malicious or corrupt export could land
+        // `state.guests = "boom"` in localStorage, and every page that
+        // does `state.guests.find(...)` would throw on next render.
+        const s = parsed.state as Record<string, unknown>;
+        const ARRAY_FIELDS = [
+          "guests", "budget", "selectedVendors", "savedVendors", "checklist", "tables",
+          "vendorChats", "assistantMessages", "compareVendors",
+          "blessings", "livePhotos",
+        ] as const;
+        for (const field of ARRAY_FIELDS) {
+          if (s[field] !== undefined && !Array.isArray(s[field])) {
+            showToast(`שדה ${field} לא תקין בקובץ`, "error");
+            return;
+          }
+        }
+        if (s.seatAssignments !== undefined &&
+            (typeof s.seatAssignments !== "object" || s.seatAssignments === null || Array.isArray(s.seatAssignments))) {
+          showToast("שדה seatAssignments לא תקין", "error");
+          return;
+        }
+        if (s.event !== undefined && s.event !== null &&
+            (typeof s.event !== "object" || Array.isArray(s.event))) {
+          showToast("שדה event לא תקין", "error");
           return;
         }
 
@@ -301,6 +358,17 @@ export default function SettingsPage() {
                   </Link>
                 </div>
 
+                {/* R14: "Restart event" was moved here from the dashboard
+                    hero. It's destructive (deletes the active event + all
+                    its data) so it sits beside the account-delete in the
+                    danger-adjacent area. Account-delete is still strictly
+                    more destructive (deletes the user too) — that one keeps
+                    the red treatment.
+                    R17 P1#4: hidden when there's no active event — nothing
+                    to restart. The settings page still works without an
+                    event (theme, account, sign-out remain). */}
+                {state.event && <RestartEventButton />}
+
                 <button
                   onClick={() => setShowDeleteDialog(true)}
                   className="w-full rounded-xl py-3 text-sm font-bold transition mt-2"
@@ -395,6 +463,15 @@ function DeleteAccountDialog({
   busy: boolean;
 }) {
   const canConfirm = input.trim() === REQUIRED_DELETE_WORD && !busy;
+  // Esc-to-close — but only when the action isn't busy. A mid-delete Esc
+  // would leave the request running with no UI feedback.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel, busy]);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
@@ -473,5 +550,84 @@ function DeleteAccountDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * R14 — moved from app/dashboard/page.tsx (Hero header).
+ * Wipes the active event slot and routes to /onboarding for a fresh setup.
+ * Lives next to "delete account" because it's destructive in scope (event +
+ * guests + budget + seating + checklist) but stops short of nuking the user.
+ */
+function RestartEventButton() {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+
+  const onConfirm = () => {
+    eventSlots.deleteActive();
+    setOpen(false);
+    router.push("/onboarding");
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full rounded-xl py-3 text-sm font-semibold transition mt-2 inline-flex items-center justify-center gap-2"
+        style={{
+          background: "var(--input-bg)",
+          color: "var(--foreground-soft)",
+          border: "1px solid var(--border-strong)",
+        }}
+      >
+        <RefreshCw size={14} aria-hidden /> התחל אירוע חדש מאפס
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="card glass-strong p-7 w-full max-w-md scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center text-red-300 mb-4"
+              style={{
+                background: "rgba(248,113,113,0.1)",
+                border: "1px solid rgba(248,113,113,0.3)",
+              }}
+            >
+              <AlertCircle size={22} aria-hidden />
+            </div>
+            <h3 className="text-xl font-bold">להתחיל מחדש?</h3>
+            <p
+              className="mt-2 text-sm leading-relaxed"
+              style={{ color: "var(--foreground-soft)" }}
+            >
+              הפעולה תמחק את האירוע הנוכחי, כולל המוזמנים, התקציב, סידורי
+              ההושבה והצ׳קליסט.{" "}
+              <strong>לא ניתן לשחזר אחרי הפעולה.</strong>
+              <br />
+              <br />
+              אם אתה רוצה לשמור את האירוע הזה ופשוט להוסיף עוד אחד — לחץ על
+              שם האירוע בכותרת, ובחר &quot;אירוע חדש&quot;.
+            </p>
+            <div className="mt-6 flex items-center justify-end gap-2">
+              <button onClick={() => setOpen(false)} className="btn-secondary">
+                ביטול
+              </button>
+              <button
+                onClick={onConfirm}
+                className="rounded-full px-5 py-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition"
+              >
+                כן, מחק והתחל
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

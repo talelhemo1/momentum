@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import type { AppState, EventInfo, Guest, BudgetItem, BudgetCategory, VendorType, ChecklistItem, ChecklistPhase, SeatingTable, VendorMessage, AssistantMessage, Blessing, LivePhoto } from "./types";
+import type { AppState, EventInfo, Guest, BudgetItem, BudgetCategory, VendorType, ChecklistItem, ChecklistPhase, SeatingTable, VendorMessage, AssistantMessage, Blessing, LivePhoto, SavedVendor } from "./types";
 import { VENDORS } from "./vendors";
 import { buildDefaultChecklist } from "./checklists";
 import { generateRsvpToken, generateSigningKey } from "./crypto";
@@ -14,6 +14,7 @@ const emptyState: AppState = {
   guests: [],
   budget: [],
   selectedVendors: [],
+  savedVendors: [],
   checklist: [],
   tables: [],
   seatAssignments: {},
@@ -31,11 +32,34 @@ function readState(): AppState {
     if (!raw) return emptyState;
     const parsed = { ...emptyState, ...(JSON.parse(raw) as Partial<AppState>) };
     // Migration: events created before HMAC enforcement may lack a signing key.
-    // Without one, /inbox would refuse all responses. Mint one lazily so legacy
-    // local data keeps working safely.
+    // Without one, /inbox would refuse all responses. We don't mint inline
+    // anymore — two tabs hitting this path simultaneously each used to
+    // generate their own random key and clobber each other's writes, leaving
+    // tokens signed by the loser unverifiable. Defer to mintSigningKeyAtomic,
+    // which serializes via Web Locks (or a 50ms re-check fallback).
     if (parsed.event && !parsed.event.signingKey) {
-      parsed.event = { ...parsed.event, signingKey: generateSigningKey() };
-      try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed)); } catch {}
+      void mintSigningKeyAtomic();
+    }
+    // Migration (R7): pre-pipeline events have `selectedVendors` populated
+    // but `savedVendors` empty. Rebuild SavedVendor entries with status="lead"
+    // for each id we don't have a richer record for. Done in-memory only —
+    // the next mutation (toggleVendor / addSavedVendor) writes back the merged
+    // shape so the persisted state catches up naturally.
+    if (parsed.selectedVendors.length > 0) {
+      const known = new Set(parsed.savedVendors.map((v) => v.vendorId));
+      const missing = parsed.selectedVendors.filter((id) => !known.has(id));
+      if (missing.length > 0) {
+        const stamp = new Date().toISOString();
+        parsed.savedVendors = [
+          ...parsed.savedVendors,
+          ...missing.map<SavedVendor>((vendorId) => ({
+            vendorId,
+            status: "lead",
+            addedAt: stamp,
+            updatedAt: stamp,
+          })),
+        ];
+      }
     }
     return parsed;
   } catch {
@@ -43,13 +67,140 @@ function readState(): AppState {
   }
 }
 
+/**
+ * Mint a signing key for the active event under a cross-tab lock so only
+ * one tab gets to write. Re-reads localStorage inside the lock so a tab that
+ * loses the race notices the winner's key and skips its own write.
+ *
+ * Tabs that LOSE the race used to bail and continue with a stale read where
+ * `event.signingKey` was undefined — until the next reload. Any RSVP token
+ * a loser tab generated in that window failed verify on the host. We now
+ * await `momentum:update` (with a safety timeout) before resolving on the
+ * loser path so callers' subsequent `readState()` already sees the key.
+ *
+ * Uses navigator.locks (Chromium, Firefox 96+, Safari 15.4+). The fallback
+ * is a brief sleep + re-read; not bulletproof, but it shrinks the race
+ * window from "anytime in milliseconds" to "<50ms with both tabs racing
+ * simultaneously" which is rare enough in practice.
+ */
+let inflightSigningKeyMint: Promise<void> | null = null;
+
+async function mintSigningKeyAtomic(): Promise<void> {
+  if (typeof window === "undefined") return;
+  // Coalesce concurrent callers within a single tab — multiple components
+  // calling readState() near simultaneously would each kick off their own
+  // mint round-trip otherwise. Same pattern mintMissingRsvpTokens uses.
+  if (inflightSigningKeyMint) return inflightSigningKeyMint;
+
+  inflightSigningKeyMint = (async () => {
+    try {
+      const tryWrite = (): boolean => {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        let parsed: Partial<AppState>;
+        try {
+          parsed = JSON.parse(raw) as Partial<AppState>;
+        } catch {
+          return false;
+        }
+        // Re-read inside the lock — another tab may have already minted.
+        if (!parsed.event || parsed.event.signingKey) return false;
+        const next: AppState = {
+          ...emptyState,
+          ...parsed,
+          event: { ...parsed.event, signingKey: generateSigningKey() },
+        };
+        try {
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          cachedSnapshot = null;
+          window.dispatchEvent(new CustomEvent("momentum:update"));
+          return true;
+        } catch {
+          // Disk full / private mode — best-effort only.
+          return false;
+        }
+      };
+
+      // Wait up to `timeoutMs` for another tab's `momentum:update` to land.
+      // Loser tabs use this to avoid returning before the winner has written.
+      const waitForUpdate = (timeoutMs: number) =>
+        new Promise<void>((resolve) => {
+          let settled = false;
+          const handler = () => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener("momentum:update", handler);
+            resolve();
+          };
+          window.addEventListener("momentum:update", handler);
+          window.setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener("momentum:update", handler);
+            resolve();
+          }, timeoutMs);
+        });
+
+      type LockManagerLike = {
+        request: (
+          name: string,
+          opts: { ifAvailable?: boolean },
+          cb: (lock: unknown) => Promise<void> | void,
+        ) => Promise<void>;
+      };
+      const locks = (navigator as Navigator & { locks?: LockManagerLike }).locks;
+      if (locks?.request) {
+        let isWinner = false;
+        try {
+          await locks.request("momentum-signingkey", { ifAvailable: true }, async (lock) => {
+            // ifAvailable: lock===null when another tab already owns it. The
+            // winner of the lock writes the key; the loser falls through and
+            // waits below for the broadcast.
+            if (!lock) return;
+            isWinner = tryWrite();
+          });
+        } catch {
+          // Lock API rejected — fall through to the polling fallback below.
+        }
+        if (!isWinner) {
+          // Loser path: wait briefly for the winner's broadcast, then check
+          // localStorage one more time in case we missed the event (different
+          // tab + storage event semantics).
+          await waitForUpdate(3000);
+          tryWrite();
+        }
+        return;
+      }
+
+      // Older browsers (pre-Web-Locks): wait one frame so any concurrently-
+      // mounted tab gets a chance to write first, then re-read and mint
+      // only if still missing.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      tryWrite();
+    } finally {
+      inflightSigningKeyMint = null;
+    }
+  })();
+
+  return inflightSigningKeyMint;
+}
+
 function writeState(state: AppState) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Wrap the write so a quota-exceeded error (private mode, very full
+  // storage, browser eviction) doesn't take down the calling action and
+  // leave the UI in a half-applied state. We still update the in-memory
+  // cache and dispatch the event — the UI stays consistent with what the
+  // user just did, even if the persisted copy fell behind.
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error("[momentum/store] localStorage write failed (state held in memory only):", e);
+  }
   // Cache invalidation so the next getSnapshot() picks up the change.
   // useSyncExternalStore tears if getSnapshot returns a new object reference
   // for unchanged data, so we read-through a stable cache.
-  cachedSnapshot = null;
+  cachedSnapshot = state;
   window.dispatchEvent(new CustomEvent("momentum:update"));
 }
 
@@ -141,9 +292,20 @@ export const actions = {
   },
 
   // ─────────────── Seating ───────────────
-  addTable(name: string, capacity: number) {
+  addTable(name: string, capacity: number, number?: number) {
     const s = readState();
-    const table: SeatingTable = { id: crypto.randomUUID(), name: name.trim() || `שולחן ${s.tables.length + 1}`, capacity: Math.max(1, capacity) };
+    // Auto-pick the next number (max existing + 1, defaulting to 1) so the
+    // host doesn't have to keep track manually. Caller can still pass an
+    // explicit number to override — used by the modal when the user types one.
+    const nextNumber =
+      number ??
+      (s.tables.reduce((max, t) => Math.max(max, t.number ?? 0), 0) + 1);
+    const table: SeatingTable = {
+      id: crypto.randomUUID(),
+      name: name.trim() || `שולחן ${nextNumber}`,
+      capacity: Math.max(1, capacity),
+      number: nextNumber,
+    };
     writeState({ ...s, tables: [...s.tables, table] });
     return table;
   },
@@ -211,6 +373,24 @@ export const actions = {
   clearAssistant() {
     const s = readState();
     writeState({ ...s, assistantMessages: [] });
+  },
+  /**
+   * R19 P1#4: remove the most recent assistant message. Used when a chat
+   * request fails before the model produces a reply (e.g. quota exhausted),
+   * so we don't leave the user's question hanging without context. The
+   * widget pushes the user turn optimistically before the network call —
+   * this lets us roll that turn back if needed.
+   * Returns the popped message, or null if the transcript was empty.
+   */
+  popLastAssistantMessage() {
+    const s = readState();
+    if (s.assistantMessages.length === 0) return null;
+    const popped = s.assistantMessages[s.assistantMessages.length - 1];
+    writeState({
+      ...s,
+      assistantMessages: s.assistantMessages.slice(0, -1),
+    });
+    return popped;
   },
 
   // ─────────────── Live mode: blessings + photos ───────────────
@@ -357,6 +537,7 @@ export const actions = {
       writeState({
         ...s,
         selectedVendors: s.selectedVendors.filter((v) => v !== id),
+        savedVendors: s.savedVendors.filter((v) => v.vendorId !== id),
         budget: s.budget.filter((b) => b.vendorId !== id),
       });
     } else {
@@ -375,12 +556,57 @@ export const actions = {
             },
           ]
         : s.budget;
+      const stamp = new Date().toISOString();
+      const alreadyInSaved = s.savedVendors.some((v) => v.vendorId === id);
       writeState({
         ...s,
         selectedVendors: [...s.selectedVendors, id],
+        savedVendors: alreadyInSaved
+          ? s.savedVendors
+          : [
+              ...s.savedVendors,
+              { vendorId: id, status: "lead", addedAt: stamp, updatedAt: stamp },
+            ],
         budget: newBudget,
       });
     }
+  },
+
+  // ─── R7: saved-vendor pipeline ──────────────────────────────────────────
+  // Add a vendor to the saved list. Internally calls the same code path as
+  // `toggleVendor` so the budget auto-linker stays the single source of truth.
+  // No-op when the vendor is already saved (idempotent — safe to call from a
+  // toggle handler that just lost track of the previous state).
+  addSavedVendor(id: string) {
+    const s = readState();
+    if (s.selectedVendors.includes(id)) return;
+    actions.toggleVendor(id);
+  },
+
+  // Remove a vendor from the saved list. Mirrors the toggleVendor remove
+  // branch (drops budget line + selectedVendors + savedVendors atomically).
+  removeSavedVendor(id: string) {
+    const s = readState();
+    if (!s.selectedVendors.includes(id)) return;
+    actions.toggleVendor(id);
+  },
+
+  // Update the SavedVendor row WITHOUT touching the legacy id list or budget.
+  // Pipeline-only fields (status, agreed price, meeting, notes, rating).
+  updateSavedVendor(
+    id: string,
+    updates: Partial<Omit<SavedVendor, "vendorId" | "addedAt">>,
+  ) {
+    const s = readState();
+    const idx = s.savedVendors.findIndex((v) => v.vendorId === id);
+    if (idx === -1) return;
+    const next = [...s.savedVendors];
+    next[idx] = { ...next[idx], ...updates, updatedAt: new Date().toISOString() };
+    writeState({ ...s, savedVendors: next });
+  },
+
+  isSavedVendor(id: string): boolean {
+    return readState().selectedVendors.includes(id);
   },
 };
 
@@ -403,6 +629,20 @@ const VENDOR_TO_BUDGET_CATEGORY: Record<VendorType, BudgetCategory> = {
   transportation: "transportation",
   sweets: "catering",
   fx: "decoration",
+  // 2026 expansion — keep ALL VendorTypes mapped so the budget linker never
+  // falls back to "other" silently.
+  drone: "photography",
+  kids: "other",
+  security: "other",
+  magician: "music",
+  lighting: "decoration",
+  stationery: "invitations",
+  signage: "decoration",
+  cocktail: "catering",
+  photobooth: "photography",
+  hosting: "music",
+  // R11 — print houses bucket into "invitations" alongside stationery.
+  printing: "invitations",
 };
 
 export function getStateSnapshot(): AppState {

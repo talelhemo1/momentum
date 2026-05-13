@@ -4,14 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
+import { EmptyEventState } from "@/components/EmptyEventState";
 import { ShareEventCard } from "@/components/ShareEventCard";
 import { EventDaySkeleton } from "@/components/skeletons/PageSkeletons";
 import { useAppState } from "@/lib/store";
 import { useUser } from "@/lib/user";
+import { tryGetPublicOrigin } from "@/lib/origin";
 import { VENDORS } from "@/lib/vendors";
 import { EVENT_TYPE_LABELS } from "@/lib/types";
 import {
   ArrowRight,
+  ArrowLeft,
   Phone,
   AlertTriangle,
   Clock,
@@ -21,12 +24,14 @@ import {
   CalendarDays,
   Heart,
   Sparkles,
+  Crown,
   QrCode,
   Download,
   Share2,
   Copy,
   X,
 } from "lucide-react";
+import { getSupabase } from "@/lib/supabase";
 import QRCode from "qrcode";
 
 interface RunOfShowItem {
@@ -58,8 +63,8 @@ export default function EventDayPage() {
       router.replace("/signup");
       return;
     }
-    if (hydrated && !state.event) router.replace("/onboarding");
-  }, [userHydrated, user, hydrated, state.event, router]);
+    // R17 P1#4: no-event handled by EmptyState below.
+  }, [userHydrated, user, router]);
 
   // Live clock
   useEffect(() => {
@@ -68,6 +73,38 @@ export default function EventDayPage() {
   }, []);
 
   const [showLiveModal, setShowLiveModal] = useState(false);
+
+  // R20 — Momentum Live opt-in banner state. Probe Supabase once on mount
+  // to find out if THIS event already has a manager (any status — invited
+  // or accepted). When it does, the banner stays hidden so we don't pester
+  // the couple to re-invite. Local-only mode (no Supabase) leaves the
+  // banner visible so the user discovers the feature; clicking it sends
+  // them to setup, which gracefully toasts about needing cloud sync.
+  const [hasManagerActive, setHasManagerActive] = useState(false);
+  // R12 §3O — depend on the id only, not the whole event object. Any
+  // unrelated edit (host name, date) would otherwise re-run this query.
+  const eventIdForManagers = state.event?.id;
+  useEffect(() => {
+    if (!eventIdForManagers) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+    let cancelled = false;
+    (async () => {
+      // Cast through never — `event_managers` isn't in a generated Database
+      // type. We only care whether the row count is > 0.
+      const { data } = (await supabase
+        .from("event_managers")
+        .select("id")
+        .eq("event_id", eventIdForManagers)
+        .in("status", ["invited", "accepted"])
+        .limit(1)) as { data: { id: string }[] | null };
+      if (cancelled) return;
+      setHasManagerActive(!!data && data.length > 0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [eventIdForManagers]);
 
   const selectedVendors = useMemo(() => {
     return state.selectedVendors
@@ -79,7 +116,7 @@ export default function EventDayPage() {
     () =>
       state.guests
         .filter((g) => g.status === "confirmed")
-        .reduce((s, g) => s + (g.attendingCount || 1), 0),
+        .reduce((s, g) => s + (g.attendingCount ?? 1), 0),
     [state.guests],
   );
 
@@ -93,7 +130,7 @@ export default function EventDayPage() {
     return -1;
   })();
 
-  if (!hydrated || !state.event) {
+  if (!hydrated) {
     return (
       <>
         <Header />
@@ -101,6 +138,7 @@ export default function EventDayPage() {
       </>
     );
   }
+  if (!state.event) return <EmptyEventState toolName="מסך יום-האירוע" />;
 
   const event = state.event;
   const eventLabel = EVENT_TYPE_LABELS[event.type];
@@ -146,6 +184,35 @@ export default function EventDayPage() {
             </div>
           </section>
 
+          {/* R20 — Momentum Live opt-in banner. Hidden once the couple
+              already invited a manager (any status). Tap the whole card to
+              enter the setup flow at /event-day/manager/setup. */}
+          {!hasManagerActive && (
+            <Link
+              href="/event-day/manager/setup"
+              className="card-gold p-6 mt-6 flex items-center gap-4 hover:translate-y-[-2px] transition group"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F4DEA9]/30 to-[#A8884A]/15 border border-[var(--border-gold)] flex items-center justify-center text-[--accent] shrink-0">
+                <Crown size={28} aria-hidden />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-bold text-lg">Momentum Live</h3>
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                    style={{ background: "linear-gradient(135deg, #F4DEA9, #A8884A)", color: "#1A1310" }}
+                  >
+                    חדש
+                  </span>
+                </div>
+                <p className="mt-1 text-sm" style={{ color: "var(--foreground-soft)" }}>
+                  אתם תחגגו. מישהו אחר ינהל. <strong className="text-[--foreground]">לחצו לפרטים</strong>
+                </p>
+              </div>
+              <ArrowLeft size={20} className="text-[--accent] opacity-60 group-hover:opacity-100" aria-hidden />
+            </Link>
+          )}
+
           {/* Live event mode launcher — generates a QR pointing at the public /live/[id] page. */}
           <section className="mt-6">
             <button
@@ -168,10 +235,16 @@ export default function EventDayPage() {
             </button>
           </section>
 
-          {/* Auto-styled share card — Canvas-rendered 1080x1920 image for stories / WhatsApp. */}
+          {/* Auto-styled share card — Canvas-rendered 1080x1920 image for stories / WhatsApp.
+              When NEXT_PUBLIC_SITE_URL isn't set we pass `null` so the card
+              renders a "configure tunnel" notice instead of embedding a
+              relative path that phones can't dial. */}
           <ShareEventCard
             event={event}
-            qrTarget={typeof window !== "undefined" ? `${window.location.origin}/live/${event.id}` : `/live/${event.id}`}
+            qrTarget={(() => {
+              const o = tryGetPublicOrigin();
+              return o ? `${o}/live/${event.id}` : null;
+            })()}
           />
 
           {/* Panic / Emergency contacts */}
@@ -301,9 +374,19 @@ function LiveEventModal({
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const liveUrl = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    return `${window.location.origin}/live/${eventId}`;
+    const o = tryGetPublicOrigin();
+    return o ? `${o}/live/${eventId}` : "";
   }, [eventId]);
+
+  // Esc-to-close — accessibility convenience that matches the rest of the
+  // app's modals.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   // Generate the QR once on mount. We use a generous size so the printout
   // scans cleanly even from across a hall, and a high error-correction level
@@ -384,51 +467,70 @@ function LiveEventModal({
         </header>
 
         <div className="p-5">
-          <div className="rounded-2xl p-4 flex items-center justify-center" style={{ background: "var(--input-bg)", border: "1px solid var(--border-gold)" }}>
-            {qrDataUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={qrDataUrl} alt="QR לעמוד החי" className="w-full max-w-[280px] aspect-square" />
-            ) : (
-              <div className="aspect-square w-full max-w-[280px] flex items-center justify-center text-sm" style={{ color: "var(--foreground-muted)" }}>
-                מייצר QR...
+          {!liveUrl ? (
+            // No public origin → no usable QR (a phone scanning the code
+            // wouldn't be able to reach a relative path). Show a clear
+            // configuration hint instead of a broken QR.
+            <div
+              className="rounded-2xl p-5 text-sm leading-relaxed"
+              style={{
+                background: "rgba(245, 158, 11, 0.08)",
+                border: "1px solid rgba(245, 158, 11, 0.4)",
+                color: "rgb(252, 211, 77)",
+              }}
+            >
+              להפעלת QR, הגדר את <code className="ltr-num">NEXT_PUBLIC_SITE_URL</code> ב-<code>.env.local</code>{" "}
+              (או הרץ <code>npm run dev:public</code> כדי שייווצר tunnel ציבורי אוטומטית), ופתח שוב את הדף.
+            </div>
+          ) : (
+            <>
+              <div className="rounded-2xl p-4 flex items-center justify-center" style={{ background: "var(--input-bg)", border: "1px solid var(--border-gold)" }}>
+                {qrDataUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={qrDataUrl} alt="QR לעמוד החי" className="w-full max-w-[280px] aspect-square" />
+                ) : (
+                  <div className="aspect-square w-full max-w-[280px] flex items-center justify-center text-sm" style={{ color: "var(--foreground-muted)" }}>
+                    מייצר QR...
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div className="mt-4 rounded-xl px-3 py-2 text-center text-xs ltr-num break-all" style={{ background: "var(--input-bg)", border: "1px solid var(--border)", color: "var(--foreground-soft)" }} dir="ltr">
-            {liveUrl}
-          </div>
+              <div className="mt-4 rounded-xl px-3 py-2 text-center text-xs ltr-num break-all" style={{ background: "var(--input-bg)", border: "1px solid var(--border)", color: "var(--foreground-soft)" }} dir="ltr">
+                {liveUrl}
+              </div>
 
-          <div className="mt-5 grid grid-cols-1 gap-2.5">
-            <button
-              onClick={downloadQr}
-              disabled={!qrDataUrl}
-              className="btn-gold py-3 inline-flex items-center justify-center gap-2 disabled:opacity-40"
-            >
-              <Download size={16} />
-              הורד QR להדפסה
-            </button>
-            <button
-              onClick={shareToWhatsapp}
-              className="btn-secondary py-3 inline-flex items-center justify-center gap-2"
-              style={{ background: "rgba(37,211,102,0.12)", borderColor: "rgba(37,211,102,0.45)", color: "rgb(74,222,128)" }}
-            >
-              <Share2 size={16} />
-              שתף קישור ב-WhatsApp
-            </button>
-            <button
-              onClick={copyLink}
-              className="rounded-2xl py-3 text-sm inline-flex items-center justify-center gap-2"
-              style={{ border: "1px dashed var(--border-strong)", color: "var(--foreground-soft)" }}
-            >
-              <Copy size={14} />
-              {copied ? "הועתק ✓" : "העתק קישור"}
-            </button>
-          </div>
+              <div className="mt-5 grid grid-cols-1 gap-2.5">
+                <button
+                  onClick={downloadQr}
+                  disabled={!qrDataUrl}
+                  className="btn-gold py-3 inline-flex items-center justify-center gap-2 disabled:opacity-40"
+                >
+                  <Download size={16} />
+                  הורד QR להדפסה
+                </button>
+                <button
+                  onClick={shareToWhatsapp}
+                  className="btn-secondary py-3 inline-flex items-center justify-center gap-2"
+                  style={{ background: "rgba(37,211,102,0.12)", borderColor: "rgba(37,211,102,0.45)", color: "rgb(74,222,128)" }}
+                >
+                  <Share2 size={16} />
+                  שתף קישור ב-WhatsApp
+                </button>
+                <button
+                  onClick={copyLink}
+                  className="rounded-2xl py-3 text-sm inline-flex items-center justify-center gap-2"
+                  style={{ border: "1px dashed var(--border-strong)", color: "var(--foreground-soft)" }}
+                >
+                  <Copy size={14} />
+                  {copied ? "הועתק ✓" : "העתק קישור"}
+                </button>
+              </div>
 
-          <p className="mt-5 text-xs text-center" style={{ color: "var(--foreground-muted)" }}>
-            לאחר 24 שעות מתחילת האירוע — העמוד יהפוך אוטומטית לאלבום זיכרון.
-          </p>
+              <p className="mt-5 text-xs text-center" style={{ color: "var(--foreground-muted)" }}>
+                לאחר 24 שעות מתחילת האירוע — העמוד יהפוך אוטומטית לאלבום זיכרון.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>

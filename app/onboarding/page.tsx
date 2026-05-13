@@ -5,8 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/Header";
 import { actions, useAppState } from "@/lib/store";
-import { useUser, userActions, type ObservanceLevel } from "@/lib/user";
-import { OBSERVANCE_DESCRIPTIONS, OBSERVANCE_LABELS } from "@/lib/israeliCalendar";
+import { useUser } from "@/lib/user";
 import { fireConfettiOnce } from "@/lib/confetti";
 import { generateSigningKey } from "@/lib/crypto";
 import { useNow, daysUntil } from "@/lib/useNow";
@@ -66,12 +65,27 @@ function OnboardingInner() {
   // Gate: redirect to signup if no account yet. New users go through /start
   // first (the pricing gate); we redirect there too if they hit /onboarding
   // directly before passing the gate.
+  //
+  // R6 fix: returning users (anyone with an existing event) bypass the gate
+  // entirely — `state.event` proves they've completed onboarding before. The
+  // earlier check only looked at the `?gate=ok` query param, so any "ערוך
+  // אירוע"/"חזור" link from /dashboard, /guests, /alcohol, /budget, etc.
+  // bounced the user to /start, /start re-routed back, /onboarding re-routed
+  // to /start ... infinite loop.
   useEffect(() => {
-    if (userHydrated && !user) router.replace("/signup");
-    else if (!isEdit && search.get("gate") !== "ok" && userHydrated && user) {
+    if (userHydrated && !user) {
+      router.replace("/signup");
+      return;
+    }
+    if (!userHydrated || !user) return;
+    // Returning user with an event — skip the pricing gate.
+    if (state.event) return;
+    // First-time onboarding requires explicit consent that pricing was seen
+    // (`?gate=ok`) OR an explicit edit intent (`?edit=1`).
+    if (!isEdit && search.get("gate") !== "ok") {
       router.replace("/start");
     }
-  }, [userHydrated, user, router, isEdit, search]);
+  }, [userHydrated, user, router, isEdit, search, state.event]);
 
   const [step, setStep] = useState(0);
 
@@ -91,10 +105,6 @@ function OnboardingInner() {
   // acting on the minor's behalf. Persisted into the EventInfo on finish.
   const [guardianConsent, setGuardianConsent] = useState(false);
   const isMinorEvent = type ? MINOR_EVENT_TYPES.includes(type) : false;
-  // Observance level — controls whether reminders are suppressed on Shabbat / חג /
-  // ימי אבל. Default "secular" so we don't accidentally muzzle reminders for
-  // someone who didn't pick. Saved to UserAccount on handleFinish.
-  const [observance, setObservance] = useState<ObservanceLevel>("secular");
 
   // One-time seed of form fields from external state (the existing event in
   // edit mode, or the user's phone if signed up via OTP). The
@@ -122,10 +132,12 @@ function OnboardingInner() {
     } else if (user?.method === "phone" && user.identifier) {
       setHostPhone(user.identifier);
     }
-    // Pre-seed observance picker from the user's stored level (returning users).
-    if (user?.observanceLevel) setObservance(user.observanceLevel);
     setPrefilled(true);
-  }, [hydrated, isEdit, state.event, user, prefilled]);
+    // R12 §3O — depend on event.id only. The prefill is a one-shot
+    // snapshot guarded by `prefilled`; further mutations shouldn't
+    // re-trigger this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, isEdit, state.event?.id, user, prefilled]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const totalSteps = 4;
@@ -158,9 +170,6 @@ function OnboardingInner() {
     // Defense in depth: canNext should already block this, but never persist
     // a minor event without guardian consent.
     if (MINOR_EVENT_TYPES.includes(type) && !guardianConsent) return;
-    // Persist the observance choice to the local user profile so reminders
-    // gating can read it later. Best-effort — no profile = no save, no error.
-    userActions.updateProfile({ observanceLevel: observance });
     const existing = state.event;
     // Preserve a prior consent timestamp on edit; otherwise stamp now.
     const consentRecord = MINOR_EVENT_TYPES.includes(type)
@@ -190,7 +199,10 @@ function OnboardingInner() {
     if (!existing) {
       fireConfettiOnce("event-created-first", 1500);
     }
-    router.push("/dashboard");
+    // R14: ?welcome=1 triggers the celebratory banner + "add 5 guests" CTA
+    // on the dashboard. The banner only appears on this exact load — once
+    // the user navigates anywhere else the param is dropped and won't reappear.
+    router.push(existing ? "/dashboard" : "/dashboard?welcome=1");
   };
 
   return (
@@ -239,8 +251,6 @@ function OnboardingInner() {
                 setHostPhone={setHostPhone}
                 guardianConsent={guardianConsent}
                 setGuardianConsent={setGuardianConsent}
-                observance={observance}
-                setObservance={setObservance}
               />
             )}
             {step === 1 && <Step2 date={date} setDate={setDate} type={type} />}
@@ -319,8 +329,6 @@ function Step1({
   setHostPhone,
   guardianConsent,
   setGuardianConsent,
-  observance,
-  setObservance,
 }: {
   type: EventType | null;
   setType: (t: EventType) => void;
@@ -334,8 +342,6 @@ function Step1({
   setHostPhone: (s: string) => void;
   guardianConsent: boolean;
   setGuardianConsent: (v: boolean) => void;
-  observance: ObservanceLevel;
-  setObservance: (o: ObservanceLevel) => void;
 }) {
   const config = type ? EVENT_CONFIG[type] : null;
   const isMinorEvent = type ? MINOR_EVENT_TYPES.includes(type) : false;
@@ -447,45 +453,6 @@ function Step1({
             </div>
           </div>
 
-          {/* Observance level — drives reminder/notification gating around
-              Shabbat, חגים, and ימי אבל. Optional question; defaults to "secular"
-              so we never accidentally muzzle reminders for someone who skipped. */}
-          <fieldset className="mt-7">
-            <legend className="block text-sm mb-3" style={{ color: "var(--foreground-soft)" }}>
-              באיזו רמה אתה שומר שבת וחגים?{" "}
-              <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>
-                (קובע מתי נשלח לך תזכורות)
-              </span>
-            </legend>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {(Object.keys(OBSERVANCE_LABELS) as ObservanceLevel[]).map((level) => {
-                const active = observance === level;
-                return (
-                  <button
-                    key={level}
-                    type="button"
-                    onClick={() => setObservance(level)}
-                    aria-pressed={active}
-                    className="rounded-2xl px-4 py-3 text-start transition"
-                    style={{
-                      background: active ? "rgba(212,176,104,0.1)" : "var(--input-bg)",
-                      border: `1px solid ${active ? "var(--border-gold)" : "var(--border)"}`,
-                      color: active ? "var(--foreground)" : "var(--foreground-soft)",
-                    }}
-                  >
-                    <div className="font-bold text-sm">
-                      {OBSERVANCE_LABELS[level]}
-                      {active && <span className="ms-2 text-[--accent]" aria-hidden>✓</span>}
-                    </div>
-                    <div className="text-xs mt-1" style={{ color: "var(--foreground-muted)" }}>
-                      {OBSERVANCE_DESCRIPTIONS[level]}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-
           {/* Guardian consent — REQUIRED for minor events. Without this checkbox
               the "Continue" button stays disabled (gated upstream in canNext). */}
           {isMinorEvent && (
@@ -520,9 +487,173 @@ function Step1({
   );
 }
 
+/**
+ * Manual day / month / year inputs in Hebrew RTL order. We deliberately
+ * avoid `<input type="date">` because the OS calendar overlay it opens
+ * confused hosts on mobile (they expected a typeable field). Three short
+ * numeric inputs feel snappier and don't take over the screen.
+ *
+ * The component still emits the same `YYYY-MM-DD` string that the rest
+ * of the app expects, so consumers don't need to change.
+ */
+function HebrewDateField({
+  date,
+  setDate,
+  minToday = true,
+}: {
+  date: string;
+  setDate: (s: string) => void;
+  minToday?: boolean;
+}) {
+  // Parse the incoming `YYYY-MM-DD` into 3 separate strings (so the user
+  // can clear a single field without losing the rest).
+  const initial = (() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    return m ? { y: m[1], mo: m[2], d: m[3] } : { y: "", mo: "", d: "" };
+  })();
+  const [day, setDay] = useState(initial.d);
+  const [month, setMonth] = useState(initial.mo);
+  const [year, setYear] = useState(initial.y);
+
+  // Keep inputs in sync if the parent prop changes externally (edit mode
+  // pre-fill, "back" navigation in onboarding). The setState-in-effect rule
+  // doesn't fit this pattern: we're synchronizing internal state to an
+  // external source, which is the documented use of useEffect. Suppress.
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  useEffect(() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    if (!m) return;
+    if (m[3] !== day) setDay(m[3]);
+    if (m[2] !== month) setMonth(m[2]);
+    if (m[1] !== year) setYear(m[1]);
+  }, [date]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
+  // Whenever all three are filled and form a valid date, push the ISO
+  // string up. Invalid combos (Feb 31, etc.) clear the parent so canNext
+  // gates the user until they fix it.
+  useEffect(() => {
+    if (!day || !month || !year) {
+      if (date !== "") setDate("");
+      return;
+    }
+    const dNum = Number(day);
+    const moNum = Number(month);
+    const yNum = Number(year);
+    if (!Number.isFinite(dNum) || !Number.isFinite(moNum) || !Number.isFinite(yNum)) return;
+    if (yNum < 1900 || yNum > 9999) return;
+    if (moNum < 1 || moNum > 12) return;
+    if (dNum < 1 || dNum > 31) return;
+    // Construct a Date in local time, then check the round-trip — catches
+    // 31 בפברואר, 30 בפברואר etc. which JS otherwise normalizes to March.
+    const probe = new Date(yNum, moNum - 1, dNum);
+    if (
+      probe.getFullYear() !== yNum ||
+      probe.getMonth() !== moNum - 1 ||
+      probe.getDate() !== dNum
+    ) {
+      if (date !== "") setDate("");
+      return;
+    }
+    if (minToday) {
+      const todayMidnight = new Date();
+      todayMidnight.setHours(0, 0, 0, 0);
+      if (probe.getTime() < todayMidnight.getTime()) {
+        if (date !== "") setDate("");
+        return;
+      }
+    }
+    const iso = `${String(yNum).padStart(4, "0")}-${String(moNum).padStart(2, "0")}-${String(dNum).padStart(2, "0")}`;
+    if (iso !== date) setDate(iso);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day, month, year, minToday]);
+
+  // Refs for focus jumping (day → month → year, RTL).
+  const monthRef = useRef<HTMLInputElement>(null);
+  const yearRef = useRef<HTMLInputElement>(null);
+
+  // Inline change handlers — read refs at event time, never during render.
+  // The linter's `react-hooks/refs` rule rejects passing refs as function
+  // args during render, so we close over them here in event scope only.
+  const onDayChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value.replace(/\D/g, "").slice(0, 2);
+    setDay(v);
+    if (v.length === 2) monthRef.current?.focus();
+  };
+  const onMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value.replace(/\D/g, "").slice(0, 2);
+    setMonth(v);
+    if (v.length === 2) yearRef.current?.focus();
+  };
+  const onYearChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+    setYear(v);
+  };
+
+  const sharedFieldStyle: React.CSSProperties = {
+    background: "var(--input-bg)",
+    border: "1px solid var(--border)",
+    color: "var(--foreground)",
+  };
+
+  return (
+    <div className="grid grid-cols-3 gap-2" dir="rtl">
+      <label className="block">
+        <span className="block text-xs text-center mb-1.5" style={{ color: "var(--foreground-muted)" }}>
+          יום
+        </span>
+        <input
+          type="text"
+          inputMode="numeric"
+          maxLength={2}
+          placeholder="1-31"
+          aria-label="יום באירוע"
+          className="rounded-2xl px-3 py-3 text-lg text-center w-full ltr-num"
+          style={sharedFieldStyle}
+          value={day}
+          onChange={onDayChange}
+        />
+      </label>
+      <label className="block">
+        <span className="block text-xs text-center mb-1.5" style={{ color: "var(--foreground-muted)" }}>
+          חודש
+        </span>
+        <input
+          ref={monthRef}
+          type="text"
+          inputMode="numeric"
+          maxLength={2}
+          placeholder="1-12"
+          aria-label="חודש האירוע"
+          className="rounded-2xl px-3 py-3 text-lg text-center w-full ltr-num"
+          style={sharedFieldStyle}
+          value={month}
+          onChange={onMonthChange}
+        />
+      </label>
+      <label className="block">
+        <span className="block text-xs text-center mb-1.5" style={{ color: "var(--foreground-muted)" }}>
+          שנה
+        </span>
+        <input
+          ref={yearRef}
+          type="text"
+          inputMode="numeric"
+          maxLength={4}
+          placeholder="2026"
+          aria-label="שנה של האירוע"
+          className="rounded-2xl px-3 py-3 text-lg text-center w-full ltr-num"
+          style={sharedFieldStyle}
+          value={year}
+          onChange={onYearChange}
+        />
+      </label>
+    </div>
+  );
+}
+
 function Step2({ date, setDate, type }: { date: string; setDate: (s: string) => void; type: EventType | null }) {
   const now = useNow(null); // single snapshot is fine for the date picker
-  const today = now ? new Date(now).toISOString().split("T")[0] : undefined;
   const days = daysUntil(date, now);
   const eventLabel = type ? EVENT_CONFIG[type].label : "האירוע";
 
@@ -534,13 +665,7 @@ function Step2({ date, setDate, type }: { date: string; setDate: (s: string) => 
         sub="התאריך מאפשר לנו לבנות לוח זמנים מדויק עבורך."
       />
       <div className="max-w-md mx-auto">
-        <input
-          type="date"
-          min={today}
-          className="input text-lg text-center"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
+        <HebrewDateField date={date} setDate={setDate} />
         {date && days != null && (
           <p className="mt-4 text-center text-white/60 text-sm" suppressHydrationWarning>
             עוד <span className="ltr-num font-bold text-[--accent]">{days}</span> ימים לאירוע

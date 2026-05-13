@@ -4,10 +4,13 @@
  * Goal: produce an assignment {guestId → tableId} that:
  *   1. ALWAYS keeps `mustSitWith` pairs at the same table.
  *   2. NEVER puts `conflictsWith` pairs at the same table.
- *   3. Prefers grouping guests of the same `group` (family/friends/...).
- *   4. Spreads age groups so each table has some balance.
- *   5. Optional soft gender balance.
- *   6. Auto-picks a "main table" with the closest family.
+ *   3. **Pins guests to their named circle's table** (R16) — e.g. a guest
+ *      tagged "חברים מהצבא" gravitates toward the table also tagged
+ *      "חברים מהצבא" with a +50/guest score that dwarfs all other signals.
+ *   4. Prefers grouping guests of the same `group` (family/friends/...).
+ *   5. Spreads age groups so each table has some balance.
+ *   6. Optional soft gender balance.
+ *   7. Auto-picks a "main table" with the closest family.
  *
  * Strategy: a constructive greedy with a scoring function. Pure JS, no
  * dependencies — runs in <50ms even for 500 guests / 50 tables. The user can
@@ -19,6 +22,18 @@
  */
 
 import type { Guest, GuestAgeGroup, GuestGroup, SeatingTable } from "./types";
+
+/**
+ * R16 helper — normalize a circle string for matching. Trims whitespace and
+ * lowercases (Hebrew is unaffected by case but we still want to fold any
+ * Latin chars users mix in). Empty / undefined input returns null so callers
+ * can short-circuit cleanly.
+ */
+function normalizeCircle(s: string | undefined): string | null {
+  if (!s) return null;
+  const trimmed = s.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 export interface SmartArrangementInput {
   guests: Guest[];
@@ -145,6 +160,24 @@ function scorePlacement(
 
   let score = 0;
 
+  // R16 — named-circle pinning. When the table has an explicit circle
+  // ("חברים מהצבא"), every cluster member whose own circle matches gets
+  // +50, and every cluster member with a DIFFERENT named circle gets -20.
+  // Cluster members with no circle are neutral. The +50 dominates every
+  // other signal in this function (group +5, age ±2, gender ±0.5, fill
+  // 0.05) but still loses to the hard capacity check above — so an
+  // overflowing army-friends table spills into the next-best table
+  // rather than dropping guests as unseated.
+  const tableCircle = normalizeCircle(t.table.circle);
+  if (tableCircle) {
+    for (const g of cluster) {
+      const gc = normalizeCircle(g.circle);
+      if (!gc) continue;
+      if (gc === tableCircle) score += 50;
+      else score -= 20;
+    }
+  }
+
   // Group cohesion: +5 per matching group member already at the table.
   const clusterGroups = new Set(cluster.map((g) => g.group).filter((g): g is GuestGroup => !!g));
   if (clusterGroups.size > 0) {
@@ -221,9 +254,18 @@ function describeTable(state: TableState): string {
   const ages = (Object.keys(state.ageCount) as GuestAgeGroup[])
     .sort((a, b) => (state.ageCount[b] ?? 0) - (state.ageCount[a] ?? 0));
 
-  if (state.guestIds.size === 0) return "שולחן ריק";
+  // R16: a named-circle table identifies itself first. The user typed the
+  // label they want ("חברים מהצבא") — that's far more informative than the
+  // closed-enum group bucket. Keep the rest of the breakdown after it.
+  const tableCircle = state.table.circle?.trim();
+
+  if (state.guestIds.size === 0) {
+    return tableCircle ? `${tableCircle} (שולחן ריק)` : "שולחן ריק";
+  }
   if (groups.length === 0 && ages.length === 0) {
-    return `${state.guestIds.size} אורחים`;
+    return tableCircle
+      ? `${tableCircle} · ${state.guestIds.size} אורחים`
+      : `${state.guestIds.size} אורחים`;
   }
 
   const parts: string[] = [];
@@ -238,7 +280,8 @@ function describeTable(state: TableState): string {
     if (ageLabels.length === 1) parts.push(`(${ageLabels[0]})`);
     else parts.push(`(${ageLabels.join(" + ")})`);
   }
-  return parts.join(" ");
+  const base = parts.join(" ");
+  return tableCircle ? `${tableCircle} · ${base}` : base;
 }
 
 /**

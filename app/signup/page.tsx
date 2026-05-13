@@ -1,16 +1,45 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, type CSSProperties } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { userActions, type SignupMethod } from "@/lib/user";
-import { Phone, ArrowLeft, ArrowRight, Sparkles, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { useAuthProviders } from "@/lib/auth-providers";
+import { STORAGE_KEYS } from "@/lib/storage-keys";
+import { Phone, Mail, ArrowLeft, ArrowRight, Sparkles, ShieldCheck, CheckCircle2, Loader2 } from "lucide-react";
 
-type Step = "choose" | "phone" | "name";
+type Step = "choose" | "phone" | "email" | "email-confirmation" | "name";
 
+/** Email step has two sub-modes. The user toggles between them. */
+type EmailMode = "signup" | "login";
+
+/**
+ * Next 16 requires components that read useSearchParams() to live inside a
+ * Suspense boundary — otherwise the page bails out of static rendering and
+ * the build complains. The actual UI lives in <SignupPageInner />.
+ */
 export default function SignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center">
+          <Loader2 className="animate-spin text-[--accent]" size={32} aria-hidden />
+        </main>
+      }
+    >
+      <SignupPageInner />
+    </Suspense>
+  );
+}
+
+function SignupPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // returnTo lets manager-invite (and any future deep-link) bring the user
+  // back to where they were *before* signup interrupted them. Defaults to
+  // /start for fresh signups.
+  const returnTo = searchParams.get("returnTo") || "/start";
   const [step, setStep] = useState<Step>("choose");
   const [method, setMethod] = useState<SignupMethod | null>(null);
   const [identifier, setIdentifier] = useState("");
@@ -19,16 +48,25 @@ export default function SignupPage() {
   const [otpSent, setOtpSent] = useState(false);
 
   const cloudEnabled = userActions.cloudEnabled();
+  const providers = useAuthProviders();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [consented, setConsented] = useState(false);
+
+  // Email/password state — kept local to the SignupPage so the user can
+  // switch back and forth between modes without losing what they typed.
+  const [emailMode, setEmailMode] = useState<EmailMode>("signup");
+  const [emailValue, setEmailValue] = useState("");
+  const [password, setPassword] = useState("");
+  const [emailName, setEmailName] = useState("");
 
   // Stamp the consent in localStorage so we have an auditable record. Called
   // at the moment a signup is actually attempted (not when the box is ticked),
   // because that's when the user becomes legally bound to the terms.
   const persistConsent = () => {
     try {
-      window.localStorage.setItem("momentum.terms_accepted_at", new Date().toISOString());
+      // R12 §3S — centralized key.
+      window.localStorage.setItem(STORAGE_KEYS.termsAcceptedAt, new Date().toISOString());
     } catch {
       // localStorage might be disabled (private mode, quota); we still allow signup.
     }
@@ -46,8 +84,21 @@ export default function SignupPage() {
         setBusy(true);
         await userActions.signInWithOAuth(m);
         // Browser will redirect to provider — nothing else to do.
-      } catch {
-        setError("ההתחברות נכשלה. נסה שוב.");
+      } catch (e) {
+        // Supabase returns "Unsupported provider" or similar when Google/Apple
+        // aren't enabled in the project's Auth settings. Surface that as a
+        // direct hint instead of the generic "התחברות נכשלה" — otherwise the
+        // user has no idea why nothing happened and assumes the app is broken.
+        const msg = e instanceof Error ? e.message : "";
+        if (/unsupported provider|provider is not enabled|validation_failed/i.test(msg)) {
+          setError(
+            m === "google"
+              ? "התחברות עם Google עדיין לא מופעלת. השתמש במייל וסיסמה."
+              : "התחברות עם Apple עדיין לא מופעלת. השתמש במייל וסיסמה.",
+          );
+        } else {
+          setError("ההתחברות נכשלה. נסה שוב.");
+        }
         setBusy(false);
       }
       return;
@@ -71,8 +122,16 @@ export default function SignupPage() {
         setBusy(true);
         await userActions.sendPhoneOtp(identifier);
         setOtpSent(true);
-      } catch {
-        setError("שליחת קוד נכשלה. בדוק את המספר ונסה שוב.");
+      } catch (e) {
+        // Supabase phone provider needs an SMS provider (Twilio etc.) wired up.
+        // When it's not, the API returns "Phone signups are disabled" or
+        // "validation_failed". Show a clear message instead of the generic one.
+        const msg = e instanceof Error ? e.message : "";
+        if (/phone (signups|provider) (are )?disabled|provider is not enabled|validation_failed/i.test(msg)) {
+          setError("התחברות בטלפון עדיין לא מופעלת. השתמש במייל וסיסמה.");
+        } else {
+          setError("שליחת קוד נכשלה. בדוק את המספר ונסה שוב.");
+        }
       } finally {
         setBusy(false);
       }
@@ -89,7 +148,7 @@ export default function SignupPage() {
         setBusy(true);
         await userActions.verifyPhoneOtp(identifier, otp);
         // Auth state listener will redirect on success.
-        router.push("/start");
+        router.push(returnTo);
       } catch {
         setError("הקוד שגוי. נסה שוב.");
       } finally {
@@ -105,7 +164,66 @@ export default function SignupPage() {
     if (!method || !name.trim()) return;
     persistConsent();
     userActions.signup({ name: name.trim(), identifier, method });
-    router.push("/start");
+    router.push(returnTo);
+  };
+
+  const submitEmail = async () => {
+    setError(null);
+    if (!consented) {
+      setError("יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.");
+      return;
+    }
+    if (!cloudEnabled) {
+      setError("Cloud Sync לא מוגדר — הרשמה דרך מייל דורשת Supabase.");
+      return;
+    }
+    persistConsent();
+    setBusy(true);
+    try {
+      if (emailMode === "signup") {
+        if (!emailName.trim()) {
+          setError("שם הוא שדה חובה.");
+          setBusy(false);
+          return;
+        }
+        const result = await userActions.signUpWithEmail(emailValue, password, emailName);
+        // mailer_autoconfirm=false (default) → Supabase sends a confirmation
+        // email and the session is null until the user clicks the link.
+        if (result.confirmationRequired) {
+          setStep("email-confirmation");
+        } else {
+          // Auto-confirmed — finalize the local profile and forward.
+          userActions.signup({
+            name: emailName.trim(),
+            identifier: emailValue.trim().toLowerCase(),
+            method: "email",
+          });
+          router.push(returnTo);
+        }
+      } else {
+        await userActions.signInWithEmail(emailValue, password);
+        // onAuthStateChange will hydrate the localStorage profile from the
+        // Supabase user metadata. Forward to returnTo (or /start) so the
+        // next render lands on the right destination — usually the journey,
+        // sometimes a deep-linked manager-invite page.
+        router.push(returnTo);
+      }
+    } catch (e) {
+      // Common Supabase errors come back with a localized-friendly message
+      // already, but we map a couple of well-known ones to clearer Hebrew.
+      const msg = e instanceof Error ? e.message : "שגיאה לא צפויה";
+      if (/invalid login credentials/i.test(msg)) {
+        setError("מייל או סיסמה לא נכונים.");
+      } else if (/already registered|already in use/i.test(msg)) {
+        setError("כתובת המייל הזאת כבר רשומה. עבור להתחברות.");
+      } else if (/email not confirmed/i.test(msg)) {
+        setError("עדיין לא אישרת את המייל. בדוק את תיבת הדואר.");
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -126,11 +244,58 @@ export default function SignupPage() {
           </div>
 
           {step === "choose" && (
-            <ChooseStep
-              onProvider={handleProvider}
-              onPhone={() => setStep("phone")}
-              disabled={!consented}
-            />
+            <>
+              {/* Consent box renders ABOVE the provider buttons so the user
+                  sees it before the buttons. Previously it sat below the card,
+                  so the disabled buttons looked broken to anyone who hadn't
+                  scrolled down to discover the checkbox. */}
+              <label
+                className="mb-5 flex items-start gap-3 text-xs cursor-pointer fade-up rounded-2xl p-3"
+                style={{
+                  background: consented ? "rgba(212,176,104,0.08)" : "var(--input-bg)",
+                  border: `1px solid ${consented ? "var(--border-gold)" : "var(--border)"}`,
+                  transition: "background 150ms, border-color 150ms",
+                } as CSSProperties}
+              >
+                <input
+                  type="checkbox"
+                  checked={consented}
+                  onChange={(e) => setConsented(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded shrink-0"
+                  style={{ accentColor: "var(--accent)" }}
+                  aria-required
+                />
+                <span style={{ color: "var(--foreground-soft)" }}>
+                  קראתי ואני מסכים/ה ל
+                  <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-[--accent] hover:underline">תנאי השימוש</Link>
+                  {" "}ול
+                  <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[--accent] hover:underline">מדיניות הפרטיות</Link>
+                  .
+                </span>
+              </label>
+              <ChooseStep
+                cloudEnabled={cloudEnabled}
+                providers={providers}
+                onProvider={handleProvider}
+                onPhone={() => {
+                  if (!consented) {
+                    setError("יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.");
+                    return;
+                  }
+                  setError(null);
+                  setStep("phone");
+                }}
+                onEmail={() => {
+                  if (!consented) {
+                    setError("יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.");
+                    return;
+                  }
+                  setError(null);
+                  setEmailMode("signup");
+                  setStep("email");
+                }}
+              />
+            </>
           )}
 
           {step === "phone" && (
@@ -147,6 +312,29 @@ export default function SignupPage() {
                 setOtpSent(false);
                 setOtp("");
               }}
+            />
+          )}
+
+          {step === "email" && (
+            <EmailStep
+              mode={emailMode}
+              setMode={setEmailMode}
+              email={emailValue}
+              setEmail={setEmailValue}
+              password={password}
+              setPassword={setPassword}
+              name={emailName}
+              setName={setEmailName}
+              busy={busy}
+              onSubmit={submitEmail}
+              onBack={() => setStep("choose")}
+            />
+          )}
+
+          {step === "email-confirmation" && (
+            <EmailConfirmationStep
+              email={emailValue}
+              onBack={() => setStep("email")}
             />
           )}
 
@@ -178,35 +366,42 @@ export default function SignupPage() {
             </div>
           )}
 
-          {step === "choose" && (
-            <label
-              className="mt-6 flex items-start gap-3 text-xs cursor-pointer fade-up"
-              style={{ animationDelay: "150ms" } as CSSProperties}
-            >
-              <input
-                type="checkbox"
-                checked={consented}
-                onChange={(e) => setConsented(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded shrink-0"
-                style={{ accentColor: "var(--accent)" }}
-                aria-required
-              />
-              <span style={{ color: "var(--foreground-soft)" }}>
-                קראתי ואני מסכים/ה ל
-                <Link href="/terms" target="_blank" className="text-[--accent] hover:underline">תנאי השימוש</Link>
-                {" "}ול
-                <Link href="/privacy" target="_blank" className="text-[--accent] hover:underline">מדיניות הפרטיות</Link>
-                .
-              </span>
-            </label>
-          )}
         </div>
       </div>
     </main>
   );
 }
 
-function ChooseStep({ onProvider, onPhone, disabled }: { onProvider: (m: "google" | "apple") => void; onPhone: () => void; disabled: boolean }) {
+function ChooseStep({
+  cloudEnabled,
+  providers,
+  onProvider,
+  onPhone,
+  onEmail,
+}: {
+  cloudEnabled: boolean;
+  providers: { google: boolean; apple: boolean; phone: boolean; loaded: boolean };
+  onProvider: (m: "google" | "apple") => void;
+  onPhone: () => void;
+  onEmail: () => void;
+}) {
+  // In local mode (no Supabase configured) every button hits the local
+  // fallback path — they all "work" by stamping a UUID into localStorage.
+  // The provider probe is irrelevant; force-enable everything.
+  // In cloud mode we gate by the probe results: until it loads we stay
+  // optimistic, so users on a fast email path don't see a flash of disabled.
+  // R12 §3N — default-on for unknown provider states. The probe sometimes
+  // reports `false` for providers that ARE configured (transient network
+  // hiccup, Supabase rate limit). We only disable a button if the probe
+  // EXPLICITLY says it's off (false), not if it returns undefined/null.
+  const ready = providers.loaded;
+  const googleOn = !cloudEnabled || !ready || providers.google !== false;
+  const appleOn = !cloudEnabled || !ready || providers.apple !== false;
+  const phoneOn = !cloudEnabled || !ready || providers.phone !== false;
+  // Email + password has no local fallback (lib/user.ts hard-requires
+  // Supabase). Hide the button in local mode rather than show something
+  // that would error on click.
+  const showEmail = cloudEnabled;
   return (
     <div className="card-gold p-7 md:p-8 fade-up">
       <div className="text-center">
@@ -223,36 +418,66 @@ function ChooseStep({ onProvider, onPhone, disabled }: { onProvider: (m: "google
       </div>
 
       <div className="mt-8 space-y-3">
+        {/* Email + password — primary CTA when cloud is configured. In local
+            mode it's hidden (no fallback). Google/Apple/Phone all have local
+            fallbacks via lib/user.ts and remain visible regardless. */}
+        {showEmail && (
+          <>
+            <button
+              onClick={onEmail}
+              className="w-full btn-gold inline-flex items-center justify-center gap-2"
+            >
+              <Mail size={18} />
+              המשך עם מייל וסיסמה
+            </button>
+
+            <div className="flex items-center gap-3 my-2 text-xs text-white/35">
+              <div className="flex-1 h-px bg-white/10" />
+              <span>או</span>
+              <div className="flex-1 h-px bg-white/10" />
+            </div>
+          </>
+        )}
+
         <button
           onClick={() => onProvider("google")}
-          disabled={disabled}
-          className="w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition group disabled:opacity-40 disabled:cursor-not-allowed"
+          disabled={!googleOn}
+          className="w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/15 disabled:hover:bg-transparent"
         >
           <GoogleIcon />
           <span className="font-semibold">המשך עם Google</span>
+          {!googleOn && (
+            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-md" style={{ background: "var(--input-bg)", color: "var(--foreground-muted)", border: "1px solid var(--border)" }}>
+              בקרוב
+            </span>
+          )}
         </button>
         <button
           onClick={() => onProvider("apple")}
-          disabled={disabled}
-          className="w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          disabled={!appleOn}
+          className="w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/15 disabled:hover:bg-transparent"
         >
           <AppleIcon />
           <span className="font-semibold">המשך עם Apple</span>
+          {!appleOn && (
+            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-md" style={{ background: "var(--input-bg)", color: "var(--foreground-muted)", border: "1px solid var(--border)" }}>
+              בקרוב
+            </span>
+          )}
         </button>
-
-        <div className="flex items-center gap-3 my-2 text-xs text-white/35">
-          <div className="flex-1 h-px bg-white/10" />
-          <span>או</span>
-          <div className="flex-1 h-px bg-white/10" />
-        </div>
 
         <button
           onClick={onPhone}
-          disabled={disabled}
-          className="w-full btn-gold inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+          disabled={!phoneOn}
+          className="w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/15 disabled:hover:bg-transparent"
         >
           <Phone size={18} />
-          המשך עם מספר טלפון
+          <span className="font-semibold">המשך עם מספר טלפון</span>
+          {!phoneOn && (
+            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-md" style={{ background: "var(--input-bg)", color: "var(--foreground-muted)", border: "1px solid var(--border)" }}>
+              בקרוב
+            </span>
+          )}
         </button>
       </div>
 
@@ -263,6 +488,275 @@ function ChooseStep({ onProvider, onPhone, disabled }: { onProvider: (m: "google
     </div>
   );
 }
+
+function EmailStep({
+  mode,
+  setMode,
+  email,
+  setEmail,
+  password,
+  setPassword,
+  name,
+  setName,
+  busy,
+  onSubmit,
+  onBack,
+}: {
+  mode: EmailMode;
+  setMode: (m: EmailMode) => void;
+  email: string;
+  setEmail: (s: string) => void;
+  password: string;
+  setPassword: (s: string) => void;
+  name: string;
+  setName: (s: string) => void;
+  busy: boolean;
+  onSubmit: () => void;
+  onBack: () => void;
+}) {
+  const isSignup = mode === "signup";
+  const canSubmit =
+    !busy &&
+    email.trim().length > 0 &&
+    password.length >= 8 &&
+    (!isSignup || name.trim().length > 0);
+
+  return (
+    <div className="card-gold p-7 md:p-8 fade-up">
+      <div className="text-center">
+        <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F4DEA9]/15 to-[#A8884A]/5 border border-[var(--border-gold)] items-center justify-center text-[--accent]">
+          <Mail size={22} />
+        </div>
+        <h1 className="mt-5 text-2xl md:text-3xl font-bold tracking-tight gradient-text">
+          {isSignup ? "הרשמה במייל" : "התחברות במייל"}
+        </h1>
+        <p className="mt-3 text-white/60 text-sm">
+          {isSignup
+            ? "ניצור לך חשבון ונשלח לינק אישור למייל."
+            : "ברוך השב — הזן את הפרטים שלך."}
+        </p>
+      </div>
+
+      {/* Mode toggle */}
+      <div className="mt-6 grid grid-cols-2 gap-1 p-1 rounded-2xl" style={{ background: "var(--input-bg)", border: "1px solid var(--border)" }}>
+        <button
+          type="button"
+          onClick={() => setMode("signup")}
+          className="rounded-xl py-2 text-sm font-semibold transition"
+          style={{
+            background: isSignup ? "var(--accent)" : "transparent",
+            color: isSignup ? "#000" : "var(--foreground-soft)",
+          }}
+        >
+          חשבון חדש
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("login")}
+          className="rounded-xl py-2 text-sm font-semibold transition"
+          style={{
+            background: !isSignup ? "var(--accent)" : "transparent",
+            color: !isSignup ? "#000" : "var(--foreground-soft)",
+          }}
+        >
+          כבר יש לי
+        </button>
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (canSubmit) onSubmit();
+        }}
+        className="mt-5 space-y-3"
+      >
+        {isSignup && (
+          <div>
+            <label className="block text-sm text-white/70 mb-2">השם שלך</label>
+            <input
+              type="text"
+              autoComplete="name"
+              placeholder="שם פרטי ושם משפחה"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="input"
+            />
+          </div>
+        )}
+        <div>
+          <label className="block text-sm text-white/70 mb-2">מייל</label>
+          <input
+            dir="ltr"
+            type="email"
+            autoComplete={isSignup ? "email" : "username"}
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="input text-start"
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-white/70 mb-2">
+            סיסמה {isSignup && <span className="text-xs text-white/40">(לפחות 8 תווים)</span>}
+          </label>
+          <input
+            dir="ltr"
+            type="password"
+            autoComplete={isSignup ? "new-password" : "current-password"}
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="input text-start"
+            minLength={8}
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className="w-full btn-gold disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+        >
+          {/* R12 §4Z — inline spinner inside the button itself instead of a
+              separate "טוען..." row below. Stops the page from jumping when
+              the submit fires; matches the pattern in /manage/accept. */}
+          {busy ? (
+            <Loader2 className="animate-spin" size={16} aria-hidden />
+          ) : (
+            <>
+              {isSignup ? "הירשם" : "התחבר"}
+              <ArrowLeft size={16} />
+            </>
+          )}
+        </button>
+
+        <button type="button" onClick={onBack} className="w-full btn-secondary text-sm py-2.5">
+          חזרה
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function EmailConfirmationStep({
+  email,
+  onBack,
+}: {
+  email: string;
+  onBack: () => void;
+}) {
+  // R12 §4Y — Resend confirmation. Stateful so the button reflects sent /
+  // sending / cooldown. Supabase enforces a 60s cooldown between resends
+  // server-side; we mirror that locally so the user gets visual feedback
+  // instead of error toasts during the cooldown.
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [cooldownLeft, setCooldownLeft] = useState(0);
+
+  const handleResend = async () => {
+    if (resendState === "sending" || cooldownLeft > 0) return;
+    setResendState("sending");
+    setResendError(null);
+    try {
+      const { getSupabase } = await import("@/lib/supabase");
+      const supabase = getSupabase();
+      if (!supabase) {
+        setResendState("error");
+        setResendError("השירות לא מוגדר. נסה שוב מאוחר יותר.");
+        return;
+      }
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+      });
+      if (error) {
+        console.error("[signup] resend failed", error);
+        setResendState("error");
+        // Friendly Hebrew messages for the two common failures.
+        if (/rate|wait|seconds/i.test(error.message)) {
+          setResendError("נסה שוב בעוד דקה. ל-Supabase יש cooldown של 60 שניות.");
+          setCooldownLeft(60);
+        } else if (/already.*confirmed/i.test(error.message)) {
+          setResendError("המייל הזה כבר אומת. אפשר להתחבר ישירות.");
+        } else {
+          setResendError("שליחה נכשלה. נסה שוב.");
+        }
+        return;
+      }
+      setResendState("sent");
+      setCooldownLeft(60);
+    } catch (e) {
+      console.error("[signup] resend exception", e);
+      setResendState("error");
+      setResendError("שליחה נכשלה. בדוק חיבור לאינטרנט.");
+    }
+  };
+
+  // Single interval for the cooldown countdown.
+  useEffect(() => {
+    if (cooldownLeft <= 0) return;
+    const id = window.setInterval(() => {
+      setCooldownLeft((n) => Math.max(0, n - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [cooldownLeft]);
+
+  const resendDisabled = resendState === "sending" || cooldownLeft > 0;
+  const resendLabel =
+    resendState === "sending"
+      ? "שולח..."
+      : cooldownLeft > 0
+        ? `נסה שוב בעוד ${cooldownLeft} שניות`
+        : resendState === "sent"
+          ? "מייל נשלח שוב ✓"
+          : "שלח שוב";
+
+  return (
+    <div className="card-gold p-7 md:p-8 fade-up text-center">
+      <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F4DEA9]/15 to-[#A8884A]/5 border border-[var(--border-gold)] items-center justify-center text-[--accent]">
+        <CheckCircle2 size={22} />
+      </div>
+      <h1 className="mt-5 text-2xl md:text-3xl font-bold tracking-tight gradient-text">
+        בדוק את המייל שלך
+      </h1>
+      <p className="mt-3 text-white/65 text-sm leading-relaxed">
+        שלחנו לינק אישור ל-<span className="text-[--accent] ltr-num">{email}</span>.
+        <br />
+        לחץ על הלינק במייל כדי להפעיל את החשבון. אחרי האישור הדפדפן יחזיר אותך
+        לכאן ותוכל להמשיך.
+      </p>
+
+      <div className="mt-7 rounded-2xl p-3 text-xs leading-relaxed text-start" style={{ background: "var(--input-bg)", border: "1px dashed var(--border)" }}>
+        <strong style={{ color: "var(--foreground-soft)" }}>לא הגיע מייל?</strong>
+        <ul className="mt-1.5 list-disc list-inside" style={{ color: "var(--foreground-muted)" }}>
+          <li>בדוק את תיקיית הספאם / קידום מכירות.</li>
+          <li>ייתכן שהמייל מתעכב 1-2 דקות.</li>
+          <li>אם עדיין כלום — לחץ &quot;שלח שוב&quot; למטה.</li>
+        </ul>
+      </div>
+
+      {/* R12 §4Y — resend button uses Supabase's auth.resend({ type:"signup" }).
+          R12 §4Z — inline spinner inside the button (was a separate row). */}
+      <button
+        type="button"
+        onClick={() => void handleResend()}
+        disabled={resendDisabled}
+        className="mt-5 btn-gold py-2.5 px-6 text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50"
+      >
+        {resendState === "sending" && <Loader2 className="animate-spin" size={14} aria-hidden />}
+        {resendLabel}
+      </button>
+
+      {resendError && (
+        <div className="mt-3 text-xs text-red-300">{resendError}</div>
+      )}
+
+      <button onClick={onBack} className="mt-3 btn-secondary text-sm py-2.5 px-6">
+        חזרה
+      </button>
+    </div>
+  );
+}
+
 
 function PhoneStep({
   identifier,

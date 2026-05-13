@@ -4,10 +4,10 @@ import { useEffect, useSyncExternalStore } from "react";
 import { getSupabase, SUPABASE_ENABLED } from "./supabase";
 import { syncOnLogin } from "./sync";
 import { STORAGE_KEYS } from "./storage-keys";
+import { normalizeIsraeliPhone } from "./phone";
+import { tryGetPublicOrigin } from "./origin";
 
-export type SignupMethod = "google" | "apple" | "phone";
-
-export type ObservanceLevel = "secular" | "traditional" | "religious";
+export type SignupMethod = "google" | "apple" | "phone" | "email";
 
 export interface UserAccount {
   id: string;
@@ -16,9 +16,6 @@ export interface UserAccount {
   identifier: string;
   method: SignupMethod;
   createdAt: string;
-  /** How strictly the user observes Shabbat / holidays. Drives notification gating.
-   *  Optional for backwards compatibility — undefined behaves like "secular". */
-  observanceLevel?: ObservanceLevel;
 }
 
 const STORAGE_KEY = STORAGE_KEYS.user;
@@ -39,8 +36,14 @@ function read(): UserAccount | null {
 
 function write(user: UserAccount | null) {
   if (typeof window === "undefined") return;
-  if (user) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-  else window.localStorage.removeItem(STORAGE_KEY);
+  try {
+    if (user) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    else window.localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    // Quota / private mode — non-fatal. We still update the in-memory copy
+    // and dispatch the event below so the UI reflects the change.
+    console.error("[momentum/user] localStorage write failed:", e);
+  }
   // Invalidate snapshot cache and notify subscribers.
   cachedUser = undefined;
   window.dispatchEvent(new CustomEvent("momentum:user-update"));
@@ -156,7 +159,7 @@ export const userActions = {
    * observance-level picker, and any future profile edits. Returns the new
    * snapshot or null if no user is signed in.
    */
-  updateProfile(patch: Partial<Pick<UserAccount, "name" | "observanceLevel">>): UserAccount | null {
+  updateProfile(patch: Partial<Pick<UserAccount, "name">>): UserAccount | null {
     const current = read();
     if (!current) return null;
     const next: UserAccount = { ...current, ...patch };
@@ -172,8 +175,16 @@ export const userActions = {
       provider,
       options: {
         // Redirect through our callback page so we can finalize the session
-        // and pull the cloud state into localStorage before landing on /onboarding.
-        redirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
+        // and pull the cloud state into localStorage before landing on
+        // /onboarding. Use tryGetPublicOrigin so prod respects the
+        // NEXT_PUBLIC_SITE_URL env var instead of whatever
+        // window.location.origin happens to be (tunnel domains, preview
+        // deploys, etc). Falls back to undefined which lets Supabase use
+        // its configured Site URL.
+        redirectTo: (() => {
+          const o = tryGetPublicOrigin();
+          return o ? `${o}/auth/callback` : undefined;
+        })(),
       },
     });
     if (error) throw error;
@@ -183,9 +194,61 @@ export const userActions = {
   async sendPhoneOtp(phone: string) {
     const supabase = getSupabase();
     if (!supabase) throw new Error("cloud-sync-disabled");
-    const normalized = phone.replace(/\D/g, "").replace(/^0/, "+972");
+    // Single source of truth for phone format: lib/phone.ts. Inline regexes
+    // here used to disagree with normalizeIsraeliPhone on edge cases like
+    // "+9720..." or "00972...", giving Supabase auth a different number from
+    // the one /guests / /rsvp would have shown the user.
+    const { phone: normalized, valid } = normalizeIsraeliPhone(phone);
+    if (!valid) throw new Error("מספר טלפון לא תקין");
     const { error } = await supabase.auth.signInWithOtp({
-      phone: normalized.startsWith("+") ? normalized : `+${normalized}`,
+      phone: `+${normalized}`,
+    });
+    if (error) throw error;
+  },
+
+  /**
+   * Email + password signup via Supabase. The user's session is established
+   * synchronously when `mailer_autoconfirm` is on; when it's off (the
+   * default), Supabase sends a confirmation email and `data.session` is
+   * null until the link is clicked. The caller should branch on the
+   * returned `confirmationRequired` to show a "check your email" view.
+   */
+  async signUpWithEmail(email: string, password: string, name: string) {
+    const supabase = getSupabase();
+    if (!supabase) throw new Error("cloud-sync-disabled");
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!/.+@.+\..+/.test(trimmedEmail)) {
+      throw new Error("כתובת מייל לא תקינה");
+    }
+    if (password.length < 8) {
+      throw new Error("הסיסמה חייבת להיות לפחות 8 תווים");
+    }
+    const { data, error } = await supabase.auth.signUp({
+      email: trimmedEmail,
+      password,
+      options: {
+        // Stash the name in user_metadata so the verify-email landing page
+        // can read it back without us having to round-trip through profiles.
+        data: { full_name: name.trim() },
+        // Where Supabase redirects after the confirmation link is clicked.
+        emailRedirectTo: (() => {
+          const o = tryGetPublicOrigin();
+          return o ? `${o}/auth/callback` : undefined;
+        })(),
+      },
+    });
+    if (error) throw error;
+    return { confirmationRequired: !data.session, user: data.user };
+  },
+
+  /** Email + password sign-in for users who already verified their email. */
+  async signInWithEmail(email: string, password: string) {
+    const supabase = getSupabase();
+    if (!supabase) throw new Error("cloud-sync-disabled");
+    const trimmedEmail = email.trim().toLowerCase();
+    const { error } = await supabase.auth.signInWithPassword({
+      email: trimmedEmail,
+      password,
     });
     if (error) throw error;
   },
@@ -194,9 +257,10 @@ export const userActions = {
   async verifyPhoneOtp(phone: string, code: string) {
     const supabase = getSupabase();
     if (!supabase) throw new Error("cloud-sync-disabled");
-    const normalized = phone.replace(/\D/g, "").replace(/^0/, "+972");
+    const { phone: normalized, valid } = normalizeIsraeliPhone(phone);
+    if (!valid) throw new Error("מספר טלפון לא תקין");
     const { error } = await supabase.auth.verifyOtp({
-      phone: normalized.startsWith("+") ? normalized : `+${normalized}`,
+      phone: `+${normalized}`,
       token: code,
       type: "sms",
     });

@@ -5,6 +5,7 @@ import { useAppState, actions } from "@/lib/store";
 import type { Vendor } from "@/lib/types";
 import { X, Send, ShieldCheck, Phone, Star } from "lucide-react";
 import { Avatar } from "./Avatar";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 const QUICK_REPLIES = [
   "האם פנוי בתאריך שלי?",
@@ -26,6 +27,20 @@ export function VendorChatModal({ vendor, onClose }: { vendor: Vendor; onClose: 
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap({ containerRef: dialogRef, active: true, onClose });
+
+  // Track in-flight mock-reply timeout. Closing the modal mid-reply used to
+  // call setTyping(false) on a torn-down component.
+  const replyTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (replyTimeoutRef.current !== null) {
+        window.clearTimeout(replyTimeoutRef.current);
+        replyTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const messages = state.vendorChats.filter((m) => m.vendorId === vendor.id);
 
@@ -39,7 +54,11 @@ export function VendorChatModal({ vendor, onClose }: { vendor: Vendor; onClose: 
     setInput("");
     setTyping(true);
     // Mock vendor response
-    setTimeout(() => {
+    if (replyTimeoutRef.current !== null) {
+      window.clearTimeout(replyTimeoutRef.current);
+    }
+    replyTimeoutRef.current = window.setTimeout(() => {
+      replyTimeoutRef.current = null;
       const reply = VENDOR_RESPONSES[Math.floor(Math.random() * VENDOR_RESPONSES.length)];
       actions.sendVendorMessage(vendor.id, reply, false);
       setTyping(false);
@@ -49,6 +68,10 @@ export function VendorChatModal({ vendor, onClose }: { vendor: Vendor; onClose: 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`שיחה עם ${vendor.name}`}
         className="card glass-strong w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl flex flex-col overflow-hidden h-[85vh] sm:h-[640px]"
         onClick={(e) => e.stopPropagation()}
       >

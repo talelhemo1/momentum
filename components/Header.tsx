@@ -11,16 +11,7 @@ import { useUser, userActions } from "@/lib/user";
 import { useSyncStatus, setupCloudSync, getLastSyncError, type SyncStatus } from "@/lib/sync";
 import { EventSwitcher } from "./EventSwitcher";
 import { eventSlots } from "@/lib/eventSlots";
-
-const NAV = [
-  { href: "/dashboard", label: "המסע" },
-  { href: "/checklist", label: "צ׳קליסט" },
-  { href: "/vendors", label: "ספקים" },
-  { href: "/guests", label: "מוזמנים" },
-  { href: "/seating", label: "הושבה" },
-  { href: "/budget", label: "תקציב" },
-  { href: "/balance", label: "מאזן" },
-];
+import { HEADER_NAV } from "@/lib/navigation";
 
 export function Header() {
   const pathname = usePathname();
@@ -79,8 +70,12 @@ export function Header() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 text-sm rounded-full glass px-1.5 py-1.5">
-          {NAV.map((n) => {
-            const active = pathname.startsWith(n.href);
+          {HEADER_NAV.map((n) => {
+            // R17: exact-match + child-prefix only. The naive `startsWith`
+            // would mark "/vendors" active when the user is on "/vendorshop"
+            // or any path that simply shares a prefix; the `/` boundary
+            // restricts it to actual descendants (e.g. /vendors/my).
+            const active = pathname === n.href || pathname.startsWith(`${n.href}/`);
             return (
               <Link
                 key={n.href}
@@ -130,13 +125,16 @@ export function Header() {
           <button
             onClick={toggle}
             aria-label="החלף ערכת נושא"
-            className="w-9 h-9 rounded-full border border-[var(--border-strong)] flex items-center justify-center"
+            // R12 §4W — WCAG 2.1 SC 2.5.5 calls for ≥44×44 CSS px on touch
+            // targets. The old 36 / 40px buttons triggered "missed tap"
+            // toasts on iOS Safari for users with larger fingers.
+            className="w-11 h-11 rounded-full border border-[var(--border-strong)] flex items-center justify-center"
           >
             {mounted && (theme === "dark" ? <Sun size={14} /> : <Moon size={14} />)}
           </button>
           <button
             aria-label="פתח תפריט"
-            className="w-10 h-10 -ms-1 flex items-center justify-center rounded-full hover:bg-[var(--secondary-button-bg)] transition"
+            className="w-11 h-11 -ms-1 flex items-center justify-center rounded-full hover:bg-[var(--secondary-button-bg)] transition"
             onClick={() => setOpen((v) => !v)}
           >
             {open ? <X size={20} /> : <Menu size={20} />}
@@ -147,8 +145,12 @@ export function Header() {
       {open && (
         <div className="md:hidden glass-strong border-t border-[var(--border)] scale-in">
           <div className="max-w-6xl mx-auto px-5 py-4 flex flex-col gap-1">
-            {NAV.map((n) => {
-              const active = pathname.startsWith(n.href);
+            {HEADER_NAV.map((n) => {
+              // R17: exact-match + child-prefix only. The naive `startsWith`
+            // would mark "/vendors" active when the user is on "/vendorshop"
+            // or any path that simply shares a prefix; the `/` boundary
+            // restricts it to actual descendants (e.g. /vendors/my).
+            const active = pathname === n.href || pathname.startsWith(`${n.href}/`);
               return (
                 <Link
                   key={n.href}

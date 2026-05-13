@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
+import { EmptyEventState } from "@/components/EmptyEventState";
 import { ChecklistSkeleton } from "@/components/skeletons/PageSkeletons";
 import { useAppState, actions } from "@/lib/store";
 import { useUser } from "@/lib/user";
@@ -41,10 +42,12 @@ export default function ChecklistPage() {
   useEffect(() => {
     if (userHydrated && !user) {
       router.replace("/signup");
-      return;
     }
-    if (hydrated && !state.event) router.replace("/onboarding");
-  }, [userHydrated, user, hydrated, state.event, router]);
+    // R14: no-event case is now handled with an explicit EmptyState below
+    // instead of a silent router.replace — the user lands here intentionally
+    // (clicking a link from elsewhere) and deserves to know why we sent them
+    // back rather than vanishing.
+  }, [userHydrated, user, router]);
 
   // Seed the checklist if it's empty (e.g., for users who created an event before checklists existed).
   useEffect(() => {
@@ -76,7 +79,7 @@ export default function ChecklistPage() {
     setAdding(null);
   };
 
-  if (!hydrated || !state.event) {
+  if (!hydrated) {
     return (
       <>
         <Header />
@@ -84,6 +87,7 @@ export default function ChecklistPage() {
       </>
     );
   }
+  if (!state.event) return <EmptyEventState toolName="הצ'קליסט" />;
 
   return (
     <>

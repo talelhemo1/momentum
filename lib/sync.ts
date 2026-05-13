@@ -146,7 +146,7 @@ async function pushToCloud(): Promise<boolean> {
   }
 }
 
-async function pullFromCloud(): Promise<AppState | null> {
+async function pullFromCloud(): Promise<{ state: AppState; updatedAt: string | null } | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
   try {
@@ -162,22 +162,88 @@ async function pullFromCloud(): Promise<AppState | null> {
       setStatus("error", error.message);
       return null;
     }
-    return (data?.payload as AppState | undefined) ?? null;
+    if (!data?.payload) return null;
+    return {
+      state: data.payload as AppState,
+      updatedAt: (data.updated_at as string | null | undefined) ?? null,
+    };
   } catch (e) {
     console.error("[momentum/sync] pullFromCloud threw:", e);
     return null;
   }
 }
 
-/** Pull the cloud state into localStorage on login. Used by the auth handler. */
+/**
+ * Schedule a cloud upsert for state held only locally. Called when
+ * `syncOnLogin` detects the local copy is newer than the cloud row by more
+ * than the conflict threshold — we keep the local edits and push them up
+ * once auth is settled. Failure here is logged but never throws; the local
+ * state is the source of truth in conflict mode.
+ *
+ * No `localState` parameter: `pushToCloud` reads the freshest copy from
+ * localStorage so we don't risk a stale snapshot being uploaded.
+ */
+function scheduleCloudUpsert(): void {
+  queueMicrotask(() => {
+    void pushToCloud().catch((e) => {
+      console.error("[momentum/sync] scheduleCloudUpsert push failed:", e);
+    });
+  });
+}
+
+const SYNC_CONFLICT_GRACE_MS = 30_000;
+const PENDING_UPSERT_FLAG_KEY = "momentum.sync.pendingUpsert";
+
+/**
+ * Pull the cloud state into localStorage on login. Detects offline-edit
+ * conflicts: if the local `updatedAt` is more than 30 seconds newer than
+ * the cloud row, we keep the local copy and schedule an upsert instead of
+ * blindly overwriting offline edits.
+ */
 export async function syncOnLogin(): Promise<{ source: "cloud" | "local" | "none" }> {
   if (!SUPABASE_ENABLED) return { source: "none" };
-  const cloudState = await pullFromCloud();
-  if (cloudState) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudState));
-    window.dispatchEvent(new CustomEvent("momentum:update"));
+  const pulled = await pullFromCloud();
+  if (pulled) {
+    const { state: cloudState, updatedAt: cloudUpdatedAtIso } = pulled;
+    const localRaw = window.localStorage.getItem(STORAGE_KEY);
+    let shouldOverwrite = true;
+    if (localRaw) {
+      try {
+        const localState = JSON.parse(localRaw) as AppState & { updatedAt?: string };
+        const localUpdatedRaw = localState.updatedAt
+          ?? localState.event?.createdAt
+          ?? null;
+        const localUpdated = localUpdatedRaw ? new Date(localUpdatedRaw).getTime() : 0;
+        const cloudUpdated = cloudUpdatedAtIso ? new Date(cloudUpdatedAtIso).getTime() : 0;
+        // If the local copy is newer than the cloud copy by more than the
+        // grace window, the user almost certainly has offline edits. Keep
+        // them and push instead of overwriting.
+        if (localUpdated > cloudUpdated + SYNC_CONFLICT_GRACE_MS) {
+          shouldOverwrite = false;
+          // Mark a flag so the user (and devtools) can see we kept local.
+          try {
+            window.localStorage.setItem(PENDING_UPSERT_FLAG_KEY, String(localUpdated));
+          } catch {
+            // private mode / quota — non-fatal.
+          }
+          scheduleCloudUpsert();
+          console.warn(
+            "[sync] local edits newer than cloud — kept local, scheduled upsert",
+          );
+        }
+      } catch {
+        // Local copy is corrupt; let the cloud overwrite it.
+      }
+    }
+    if (shouldOverwrite) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudState));
+      window.dispatchEvent(new CustomEvent("momentum:update"));
+      setStatus("synced");
+      return { source: "cloud" };
+    }
+    // We kept local; treat the result as a local-source sync.
     setStatus("synced");
-    return { source: "cloud" };
+    return { source: "local" };
   }
   // No cloud row yet → push current local state up so the user starts fresh in cloud.
   const ok = await pushToCloud();

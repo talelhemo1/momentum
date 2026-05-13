@@ -185,12 +185,14 @@ function SocialProof() {
 }
 
 function Journey() {
+  // R14: shrunk from 5 numbered steps to 3 big phases. The numbered list
+  // promised structure that didn't match the in-app journey (which has 7+
+  // unlock conditions); the new 3-step view honestly previews the high-level
+  // arc without committing us to a specific step count.
   const steps = [
-    { n: 1, title: "בחר קונספט", desc: "סוג אירוע, תאריך ותקציב — בונים מסלול אישי." },
-    { n: 2, title: "סגור ספקים", desc: "אולם, צלם, DJ ועוד — הכל מהאזור שלך." },
-    { n: 3, title: "הזמן את האורחים", desc: "הזמנה דיגיטלית עם RSVP אוטומטי." },
-    { n: 4, title: "עקוב בתקציב", desc: "חיזוי עלות סופית בלי הפתעות." },
-    { n: 5, title: "תיהנה מהיום", desc: "הכל מסודר. אתה רק צריך להגיע." },
+    { icon: "🎯", title: "הגדר את האירוע", desc: "סוג, תאריך, אורחים, תקציב — מסלול אישי בונה את עצמו." },
+    { icon: "📨", title: "הזמן ועקוב אחרי אורחים", desc: "הזמנה בוואצאפ, RSVP חי, וסידור הושבה חכם." },
+    { icon: "🎉", title: "חגוג בקלות", desc: "Memory Album, Find My Table, ויום אירוע מסונכרן." },
   ];
   return (
     <section id="journey" className="py-28 md:py-36 relative">
@@ -208,13 +210,20 @@ function Journey() {
           </p>
         </div>
 
-        <div className="mt-16 grid gap-4 md:grid-cols-5 stagger">
+        <div className="mt-16 grid gap-5 md:grid-cols-3 stagger">
           {steps.map((s) => (
-            <div key={s.n} className="card card-hover p-6">
-              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#F4DEA9] to-[#A8884A] flex items-center justify-center text-black font-bold text-lg shadow-[0_8px_24px_-8px_rgba(212,176,104,0.5)]">
-                {s.n}
+            <div key={s.title} className="card card-hover p-7">
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
+                style={{
+                  background: "rgba(212,176,104,0.10)",
+                  border: "1px solid var(--border-gold)",
+                }}
+                aria-hidden
+              >
+                {s.icon}
               </div>
-              <h3 className="text-lg font-semibold mt-5">{s.title}</h3>
+              <h3 className="text-lg md:text-xl font-semibold mt-5">{s.title}</h3>
               <p className="text-sm text-white/55 mt-2 leading-relaxed">{s.desc}</p>
             </div>
           ))}
@@ -404,13 +413,13 @@ function CTA() {
         <p className="mt-7 text-white/60 text-lg md:text-xl leading-relaxed">
           אל תבזבז זמן על כאב ראש. תן ל-Momentum ללוות אותך — ולבנות את האירוע שתמיד רצית.
         </p>
-        <div className="mt-11 flex flex-col sm:flex-row items-center justify-center gap-3">
+        {/* R14: single CTA. The previous "דלג למסע" sent anonymous visitors
+            straight to /dashboard, where a redirect chain bounced them back —
+            confusing and wasteful. One button, one destination. */}
+        <div className="mt-11 flex justify-center">
           <Link href="/signup" className="btn-gold inline-flex items-center gap-2">
             התחל בחינם
             <ArrowLeft size={18} />
-          </Link>
-          <Link href="/dashboard" className="btn-secondary">
-            דלג למסע
           </Link>
         </div>
         <div className="mt-6 text-xs flex items-center justify-center gap-4" style={{ color: "var(--foreground-muted)" }}>

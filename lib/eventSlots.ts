@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import type { AppState } from "./types";
 import { STORAGE_KEYS } from "./storage-keys";
 
@@ -38,6 +38,7 @@ const emptyState: AppState = {
   guests: [],
   budget: [],
   selectedVendors: [],
+  savedVendors: [],
   checklist: [],
   tables: [],
   seatAssignments: {},
@@ -60,7 +61,13 @@ function read<T>(key: string, fallback: T): T {
 
 function write(key: string, value: unknown) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  // Quota-exceeded / private-mode writes throw; swallow so a single failed
+  // snapshot doesn't bring down the calling slot operation.
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error("[momentum/eventSlots] localStorage write failed:", e);
+  }
 }
 
 function readActive(): AppState {
@@ -93,6 +100,14 @@ function buildLabel(state: AppState): string {
 // Cross-tab synchronization channel. When tab A writes to slots, tab B
 // gets a "refresh" message and re-reads from localStorage — so the two
 // tabs converge instead of clobbering each other's writes.
+//
+// By design, the channel is opened once at module-eval time and never
+// closed: it's a singleton that should live for the lifetime of the page.
+// This is the (slightly unusual) "module-scope BroadcastChannel" pattern;
+// closing it on the last hook unmount would also need a refcount AND would
+// silently drop messages during route transitions when no subscriber is
+// briefly mounted. The slight cost: dev HMR may stack channels across
+// reloads — that's a hot-reload artifact, not a production leak.
 const broadcast = typeof BroadcastChannel !== "undefined"
   ? new BroadcastChannel("momentum-slots")
   : null;
@@ -101,18 +116,44 @@ function dispatchUpdate() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("momentum:slots-update"));
   window.dispatchEvent(new CustomEvent("momentum:update"));
-  // Notify other tabs of the change.
-  broadcast?.postMessage({ type: "slots-update" });
+  // Notify other tabs of the change. We include the activeId we just wrote
+  // so receivers can decide whether the change affects their visible event
+  // or only the slots registry.
+  broadcast?.postMessage({
+    type: "slots-update",
+    activeId: readActiveId(),
+    source: "tab-self",
+  });
 }
 
-// Listen for messages from other tabs and forward them as in-tab events
-// so existing subscribers (useEventSlots, useAppState) refresh their snapshots.
+// Listen for messages from other tabs. Until this fix, the listener
+// invalidated the cached active id on every message — which caused tab A
+// (working on event X) to silently flip to event Y when tab B switched
+// active. We now check whether the inbound activeId matches the one this
+// tab is showing; if not, only the slots list is refreshed, and a custom
+// `eventSlots:remoteChange` event lets the UI notify the user without
+// hijacking their workspace.
 if (typeof window !== "undefined" && broadcast) {
   broadcast.addEventListener("message", (e) => {
-    if (e.data?.type === "slots-update") {
+    const data = e.data as { type?: string; activeId?: string | null } | null;
+    if (!data?.type || data.type !== "slots-update") return;
+    const localActive = cachedActiveId !== undefined ? cachedActiveId : readActiveId();
+    if (data.activeId && localActive && data.activeId !== localActive) {
+      // Another tab switched away to a different event. Don't hijack this
+      // tab's view — only refresh the slots list (so the dropdown stays
+      // current) and emit a soft event for any banner that wants to react.
+      cachedSlots = null;
       window.dispatchEvent(new CustomEvent("momentum:slots-update"));
-      window.dispatchEvent(new CustomEvent("momentum:update"));
+      window.dispatchEvent(
+        new CustomEvent("eventSlots:remoteChange", { detail: data }),
+      );
+      return;
     }
+    // Same active event (or no active id locally) — refresh everything.
+    cachedSlots = null;
+    cachedActiveId = undefined;
+    window.dispatchEvent(new CustomEvent("momentum:slots-update"));
+    window.dispatchEvent(new CustomEvent("momentum:update"));
   });
 }
 
@@ -181,6 +222,12 @@ export const eventSlots = {
 
   /** Delete the active event entirely (cancel/restart). Auto-switches to another slot if any exist. */
   deleteActive(): void {
+    // Flush in-flight edits to the slots registry FIRST. Without this, any
+    // unsaved guests/budget rows on the active event are gone forever once we
+    // overwrite ACTIVE_KEY below — and if the user later confirms a "are you
+    // sure?" dialog (added at the call site) the side effects are still
+    // recoverable from the slot.
+    snapshotActive();
     const slots = readSlots();
     const activeId = readActiveId();
     const remaining = activeId ? slots.filter((s) => s.id !== activeId) : slots;
@@ -205,6 +252,9 @@ export const eventSlots = {
       eventSlots.deleteActive();
       return;
     }
+    // Snapshot the active slot before mutating the registry so unsaved edits
+    // on the (still-active) slot survive a non-active deletion.
+    snapshotActive();
     const slots = readSlots().filter((s) => s.id !== slotId);
     write(SLOTS_KEY, slots);
     dispatchUpdate();
@@ -247,13 +297,22 @@ function subscribeSlots(callback: () => void) {
     cachedActiveId = undefined;
     callback();
   };
+  // Filter "storage" events to the keys we own. Without this filter, every
+  // localStorage write on the same origin (theme toggle, user prefs, third-
+  // party widgets) would invalidate the cache and force every consumer of
+  // useEventSlots to re-render.
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === SLOTS_KEY || e.key === ACTIVE_KEY || e.key === ACTIVE_ID_KEY) {
+      onUpdate();
+    }
+  };
   window.addEventListener("momentum:slots-update", onUpdate);
   window.addEventListener("momentum:update", onUpdate);
-  window.addEventListener("storage", onUpdate);
+  window.addEventListener("storage", onStorage);
   return () => {
     window.removeEventListener("momentum:slots-update", onUpdate);
     window.removeEventListener("momentum:update", onUpdate);
-    window.removeEventListener("storage", onUpdate);
+    window.removeEventListener("storage", onStorage);
   };
 }
 
@@ -263,16 +322,22 @@ export function useEventSlots() {
   const slots = useSyncExternalStore(subscribeSlots, getSlotsSnapshot, () => EMPTY_SLOTS);
   const activeId = useSyncExternalStore<string | null>(subscribeSlots, getActiveIdSnapshot, () => null);
 
-  // Expose state values + the ACTION methods (skip the `activeId()` getter — it
-  // would otherwise shadow our reactive `activeId` state above).
-  return {
-    slots,
-    activeId,
-    switchTo: eventSlots.switchTo,
-    createNew: eventSlots.createNew,
-    deleteActive: eventSlots.deleteActive,
-    deleteSlot: eventSlots.deleteSlot,
-    saveSnapshot: eventSlots.saveSnapshot,
-    list: eventSlots.list,
-  };
+  // Memoize the returned object so each render hands consumers a stable
+  // reference. Without this, putting the result into a downstream
+  // useEffect/useMemo deps array would loop forever — the action fns are
+  // already stable (module-level), so we only invalidate when slots/activeId
+  // change.
+  return useMemo(
+    () => ({
+      slots,
+      activeId,
+      switchTo: eventSlots.switchTo,
+      createNew: eventSlots.createNew,
+      deleteActive: eventSlots.deleteActive,
+      deleteSlot: eventSlots.deleteSlot,
+      saveSnapshot: eventSlots.saveSnapshot,
+      list: eventSlots.list,
+    }),
+    [slots, activeId],
+  );
 }

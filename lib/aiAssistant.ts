@@ -28,10 +28,19 @@ export function generateAssistantReply(message: string, state: AppState): string
     return `שלום ${name}! מה אני יכול לעזור עם ה${eventLabel} שלך?`;
   }
 
-  // Budget questions
-  if (/תקציב|כמה.*עולה|עולה.*כמה|חורג|תכנון.*כספי/.test(text)) {
+  // Budget questions. The regex anchor + length cap on `כמה ___ עולה`
+  // prevents matches like "כמה ספקים יש לי בעולם" — the previous greedy
+  // `כמה.*עולה` matched any sentence containing both words and routed it
+  // through the budget responder.
+  if (/תקציב|^\s*כמה\s+\S{1,20}\s+עולה|חורג|תכנון.*כספי/.test(text)) {
     const totalCost = state.budget.reduce((s, b) => s + (b.actual ?? b.estimated), 0);
     const remaining = event.budgetTotal - totalCost;
+    // Guard against undefined/zero/NaN inputs propagating into the user-
+    // facing text. If we can't compute a meaningful "remaining", say so
+    // honestly rather than rendering "חרגת ב-NaN ש"ח".
+    if (!Number.isFinite(remaining) || !Number.isFinite(totalCost) || event.budgetTotal <= 0) {
+      return "עוד לא הגדרת תקציב כולל לאירוע. בעמוד 'תקציב' אפשר לקבוע סכום יעד, ואחר כך אעזור לעקוב אחר ההוצאות.";
+    }
     const pct = event.budgetTotal > 0 ? Math.round((totalCost / event.budgetTotal) * 100) : 0;
     if (totalCost === 0) {
       return `התקציב הכולל שלך הוא ₪${event.budgetTotal.toLocaleString("he-IL")}. עוד לא הוספת הוצאות — בעמוד התקציב אפשר להתחיל למלא, או לחזור לעמוד הספקים ולסמן ספק (זה ייכנס אוטומטית לתקציב).`;
@@ -46,7 +55,7 @@ export function generateAssistantReply(message: string, state: AppState): string
   if (/מעטפ|מתנ|כמה.*אורח|לרשום.*שיק/.test(text)) {
     const totalCost = state.budget.reduce((s, b) => s + (b.actual ?? b.estimated), 0) || event.budgetTotal;
     const env = calcEnvelope(event.type, totalCost, event.guestEstimate);
-    return `לפי החישוב החכם, אורח צריך לתת בממוצע ₪${env.suggestedPerGuest.toLocaleString("he-IL")} כדי לכסות את עלות האירוע. הממוצע המקובל ב${eventLabel} הוא ₪${env.typical.toLocaleString("he-IL")}. בעמוד התקציב יש פירוט מלא של 3 תרחישים — הפסד מודע, איזון, ורווח של 15%.`;
+    return `לפי החישוב, זוג צריך להביא בממוצע ₪${env.suggestedPerGuest.toLocaleString("he-IL")} כדי לכסות את עלות האירוע. הממוצע הארצי ב${eventLabel} הוא ₪${env.typical.toLocaleString("he-IL")}. בעמוד התקציב יש 3 תרחישים — ממוצע ארצי, כיסוי מלא, וכיסוי + ירח דבש — ועוד מחשבון מדויק לפי סוג מערכת יחסים.`;
   }
 
   // Vendor / supplier questions

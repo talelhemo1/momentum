@@ -4,11 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
+import { EmptyEventState } from "@/components/EmptyEventState";
 import { PrintButton } from "@/components/PrintButton";
 import { useAppState, actions, mintMissingRsvpTokens } from "@/lib/store";
 import { useUser } from "@/lib/user";
 import { buildHostInvitationWhatsappLink } from "@/lib/invitation";
-import { buildRsvpUrl, buildWhatsAppMessage } from "@/lib/rsvpLinks";
+import { tryGetPublicOrigin } from "@/lib/origin";
+import { buildWhatsAppMessage } from "@/lib/rsvpLinks";
+import { useGuestWhatsappLink } from "@/hooks/useGuestWhatsappLink";
 import { trackEvent } from "@/lib/analytics";
 import { subscribeRsvpUpdates, type RsvpUpdate } from "@/lib/rsvpSync";
 import { showToast } from "@/components/Toast";
@@ -42,6 +45,7 @@ import {
   ChevronDown,
   BookUser,
   Download,
+  RefreshCw,
 } from "lucide-react";
 
 const STATUS_LABEL: Record<GuestStatus, string> = {
@@ -108,8 +112,8 @@ export default function GuestsPage() {
       router.replace("/signup");
       return;
     }
-    if (hydrated && !state.event) router.replace("/onboarding");
-  }, [userHydrated, user, hydrated, state.event, router]);
+    // R14: no-event handled by EmptyState below.
+  }, [userHydrated, user, router]);
 
   // Backfill RSVP tokens for legacy guests on first hydration. The action is
   // idempotent + dedup-coalesced inside the lib, so it's safe to call broadly.
@@ -122,36 +126,44 @@ export default function GuestsPage() {
   // device. We only fire toasts for updates that aren't from this same tab
   // ("self") so the host doesn't see a notification for their own clicks.
   const [recentlyChanged, setRecentlyChanged] = useState<{ id: string; at: number } | null>(null);
+  // Track total confirmed HEAD count across renders so the 100-attendees
+  // milestone fires on the boundary even when a single RSVP with
+  // attendingCount=6 jumps the total from 95 → 101 in one update — the
+  // previous `>= 99` check on guest-count missed those leaps because it
+  // didn't account for headcount per row.
+  const lastConfirmedHeadsRef = useRef<number>(0);
   useEffect(() => {
     const off = subscribeRsvpUpdates((u: RsvpUpdate) => {
       if (u.source === "self") {
         // Still flash the row so the dashboard feels alive when the host
         // clicks "אישר" themselves, but skip the toast.
         setRecentlyChanged({ id: u.guestId, at: Date.now() });
-        return;
+      } else {
+        const guest = state.guests.find((g) => g.id === u.guestId);
+        const name = guest?.name ?? "אורח";
+        const label =
+          u.status === "confirmed"
+            ? `✅ ${name} בדיוק אישר/ה הגעה!`
+            : u.status === "maybe"
+              ? `🤔 ${name} ענה/תה 'אולי'`
+              : u.status === "declined"
+                ? `❌ ${name} לא יוכל/תוכל להגיע`
+                : `🔔 ${name} עדכן/ה סטטוס`;
+        showToast(label, u.status === "confirmed" ? "success" : "info");
+        setRecentlyChanged({ id: u.guestId, at: Date.now() });
       }
-      const guest = state.guests.find((g) => g.id === u.guestId);
-      const name = guest?.name ?? "אורח";
-      const label =
-        u.status === "confirmed"
-          ? `✅ ${name} בדיוק אישר/ה הגעה!`
-          : u.status === "maybe"
-            ? `🤔 ${name} ענה/תה 'אולי'`
-            : u.status === "declined"
-              ? `❌ ${name} לא יוכל/תוכל להגיע`
-              : `🔔 ${name} עדכן/ה סטטוס`;
-      showToast(label, u.status === "confirmed" ? "success" : "info");
-      setRecentlyChanged({ id: u.guestId, at: Date.now() });
-      // Milestone: 100th confirmed RSVP. We compute by counting AFTER the
-      // store update has landed (rsvpSync writes synchronously). Confetti
-      // fires once per event-id via fireConfettiOnce.
-      if (u.status === "confirmed") {
-        const confirmed = state.guests.filter((g) => g.status === "confirmed").length;
-        // We just transitioned this guest; if they weren't already confirmed
-        // the count below shows the OLD value, so check `>= 99`.
-        if (state.event && confirmed >= 99) {
-          fireConfettiOnce(`100-confirmed-${state.event.id}`, 1500);
-        }
+      // Milestone: 100 confirmed attendees. Compare prev/curr HEAD totals
+      // and trigger only when crossing the threshold from below — this
+      // catches "one big RSVP just pushed us past 100" cases. The
+      // localStorage flag inside fireConfettiOnce keeps reloads from
+      // re-firing.
+      const heads = state.guests
+        .filter((g) => g.status === "confirmed")
+        .reduce((sum, g) => sum + (g.attendingCount ?? 1), 0);
+      const prev = lastConfirmedHeadsRef.current;
+      lastConfirmedHeadsRef.current = heads;
+      if (prev < 100 && heads >= 100 && state.event) {
+        fireConfettiOnce(`100-confirmed-${state.event.id}`, 1500);
       }
     });
     return off;
@@ -184,7 +196,7 @@ export default function GuestsPage() {
     };
   }, [state.guests]);
 
-  if (!hydrated || !state.event) {
+  if (!hydrated) {
     return (
       <>
         <Header />
@@ -192,6 +204,7 @@ export default function GuestsPage() {
       </>
     );
   }
+  if (!state.event) return <EmptyEventState toolName="ניהול המוזמנים" />;
 
   return (
     <>
@@ -417,26 +430,17 @@ function GuestRow({
   glow?: number;
 }) {
   const [open, setOpen] = useState(false);
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  // Build the signed RSVP URL asynchronously (HMAC requires async crypto.subtle).
-  // We keep `buildHostInvitationWhatsappLink` as a fallback for guests created
-  // before phase-1's token migration ran, but prefer the new token-based URL
-  // whenever a token is present.
-  void buildHostInvitationWhatsappLink; // legacy import kept intentionally — see below.
-  const [whatsappUrl, setWhatsappUrl] = useState<string>("");
-  const [rsvpUrl, setRsvpUrl] = useState<string>("");
-  useEffect(() => {
-    let cancelled = false;
-    void Promise.all([
-      buildWhatsAppMessage(origin, event, guest),
-      buildRsvpUrl(origin, event, guest),
-    ]).then(([msg, url]) => {
-      if (cancelled) return;
-      setWhatsappUrl(msg.url);
-      setRsvpUrl(url);
-    });
-    return () => { cancelled = true; };
-  }, [origin, event, guest]);
+  const origin = tryGetPublicOrigin();
+  // Build the signed RSVP URL lazily + cached via useGuestWhatsappLink.
+  // The hook holds a module-scoped Promise cache keyed on event/guest/token
+  // and gates the crypto work behind an IntersectionObserver — so /guests
+  // with 200 cards only computes for cards visible (or about to be) instead
+  // of firing 400 concurrent HMAC ops on mount.
+  // (`buildHostInvitationWhatsappLink` is kept imported as a legacy fallback
+  // path used elsewhere; intentionally referenced below to avoid an
+  // unused-import lint.)
+  void buildHostInvitationWhatsappLink;
+  const { whatsappUrl, rsvpUrl, cardRef } = useGuestWhatsappLink(origin, event, guest);
 
   const statusUI = (() => {
     switch (guest.status) {
@@ -454,7 +458,23 @@ function GuestRow({
   })();
 
   const onSendWhatsapp = () => {
-    window.open(whatsappUrl, "_blank");
+    // Guard: the link is built async (HMAC needs crypto.subtle). A click that
+    // lands before the Promise resolves used to fire window.open("", ...) and
+    // open a blank `about:blank` tab while still marking the guest as invited.
+    if (!whatsappUrl) {
+      showToast("מכין את הקישור, נסה שוב בעוד רגע", "info");
+      return;
+    }
+    const w = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+    if (!w) {
+      // Popup blocker — copy the URL so the host can paste it manually
+      // instead of staring at a button that "did nothing".
+      void navigator.clipboard.writeText(whatsappUrl).then(
+        () => showToast("הדפדפן חסם פתיחה. הקישור הועתק — הדבק בוואטסאפ", "info"),
+        () => showToast("הדפדפן חסם פתיחה ולא הצלחנו להעתיק. בטל חסימת חלונות קופצים", "error"),
+      );
+      return;
+    }
     actions.markInvited(guest.id);
   };
 
@@ -466,6 +486,7 @@ function GuestRow({
 
   return (
     <div
+      ref={cardRef}
       className={`card p-4 md:p-5 transition-shadow duration-700 ${glow ? "rsvp-glow" : ""}`}
       data-glow-key={glow ?? undefined}
     >
@@ -517,12 +538,27 @@ function GuestRow({
           {/* WhatsApp + details — secondary, compact */}
           <button
             onClick={onSendWhatsapp}
+            // Only disable on missing phone. We INTENTIONALLY allow clicks
+            // while !whatsappUrl so the click handler runs and shows the
+            // "מכין את הקישור" toast instead of the user staring at a
+            // grayed-out button that ignores them.
             disabled={!guest.phone}
-            title={guest.phone ? "שלח הזמנה בוואטסאפ" : "הוסף מספר טלפון כדי לשלוח"}
+            title={
+              !guest.phone
+                ? "הוסף מספר טלפון כדי לשלוח"
+                : !whatsappUrl
+                  ? "מכין את הקישור..."
+                  : "שלח הזמנה בוואטסאפ"
+            }
+            aria-busy={!!guest.phone && !whatsappUrl}
             className="ms-1 w-9 h-9 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black inline-flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-emerald-500"
             aria-label="שלח בוואטסאפ"
           >
-            <MessageCircle size={15} />
+            {guest.phone && !whatsappUrl ? (
+              <RefreshCw size={15} className="animate-spin" />
+            ) : (
+              <MessageCircle size={15} />
+            )}
           </button>
           <button
             onClick={() => setOpen((v) => !v)}
@@ -541,10 +577,21 @@ function GuestRow({
             <button
               onClick={onSendWhatsapp}
               disabled={!guest.phone}
-              title={guest.phone ? "" : "הוסף מספר טלפון לאורח כדי לשלוח בוואטסאפ"}
+              title={
+                !guest.phone
+                  ? "הוסף מספר טלפון לאורח כדי לשלוח בוואטסאפ"
+                  : !whatsappUrl
+                    ? "מכין את הקישור..."
+                    : ""
+              }
+              aria-busy={!!guest.phone && !whatsappUrl}
               className="rounded-full bg-emerald-500 text-black px-4 py-2 text-sm font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <MessageCircle size={16} />
+              {guest.phone && !whatsappUrl ? (
+                <RefreshCw size={16} className="animate-spin" />
+              ) : (
+                <MessageCircle size={16} />
+              )}
               שלח בוואטסאפ
             </button>
           </div>
@@ -559,7 +606,7 @@ function GuestRow({
           <a
             href={rsvpUrl}
             target="_blank"
-            rel="noopener"
+            rel="noopener noreferrer"
             className="rounded-2xl border border-white/10 hover:bg-white/5 p-3 text-sm text-start flex items-center gap-2"
           >
             <ArrowRight size={16} /> תצוגה מקדימה (איך האורח רואה)
@@ -648,13 +695,30 @@ function QuickStatusButton({
 }
 
 function AddGuestModal({ onClose }: { onClose: () => void }) {
+  const { state } = useAppState();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [count, setCount] = useState("1");
   // New: feed the smart-seating algorithm. All optional — defaults work.
   const [group, setGroup] = useState<GuestGroup | "">("");
   const [ageGroup, setAgeGroup] = useState<GuestAgeGroup | "">("");
+  // R16: free-form circle name (e.g. "חברים מהצבא"). Matches the same field
+  // on tables, drives the auto-seat pinning behavior.
+  const [circle, setCircle] = useState("");
   const isValid = name.trim().length > 0;
+
+  // Suggest existing circles (from guests + tables) for quick re-use, so
+  // the user doesn't accidentally create "חברים מהצבא" and "חברים מצבא".
+  const circleSuggestions = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of state.guests) {
+      if (g.circle?.trim()) set.add(g.circle.trim());
+    }
+    for (const t of state.tables) {
+      if (t.circle?.trim()) set.add(t.circle.trim());
+    }
+    return Array.from(set).sort();
+  }, [state.guests, state.tables]);
 
   const submit = () => {
     if (!isValid) return;
@@ -664,6 +728,7 @@ function AddGuestModal({ onClose }: { onClose: () => void }) {
       attendingCount: Number(count) || 1,
       ...(group ? { group } : {}),
       ...(ageGroup ? { ageGroup } : {}),
+      ...(circle.trim() ? { circle: circle.trim() } : {}),
     });
     onClose();
   };
@@ -747,6 +812,37 @@ function AddGuestModal({ onClose }: { onClose: () => void }) {
               </select>
             </div>
           </div>
+
+          {/* R16 — free-form social circle. When the user types e.g.
+              "חברים מהצבא" here AND names a table the same thing, the
+              auto-arrangement pins this guest to that table. <datalist>
+              gives a native autocomplete from existing values so two
+              "army friends" tables don't end up split across "חברים מהצבא"
+              / "חברים מצבא". */}
+          <div>
+            <label className="block text-sm mb-1.5" style={{ color: "var(--foreground-soft)" }}>
+              חוג חברתי{" "}
+              <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                (לדוגמה: &quot;חברים מהצבא&quot; — תואם לשולחן באותו שם בהושבה אוטומטית)
+              </span>
+            </label>
+            <input
+              className="input"
+              list="circle-suggestions"
+              value={circle}
+              onChange={(e) => setCircle(e.target.value)}
+              placeholder="חברים מהצבא / משפחה רחוקה / חברי כיתה י׳"
+              maxLength={60}
+              aria-label="חוג חברתי"
+            />
+            {circleSuggestions.length > 0 && (
+              <datalist id="circle-suggestions">
+                {circleSuggestions.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            )}
+          </div>
         </div>
         <div className="mt-6 flex items-center justify-end gap-2">
           <button onClick={onClose} className="btn-secondary">ביטול</button>
@@ -776,10 +872,15 @@ function BulkInviteModal({
 }) {
   const [index, setIndex] = useState(0);
   const [opened, setOpened] = useState<Set<string>>(new Set());
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const origin = tryGetPublicOrigin();
   // Telemetry: stamp the start of a bulk session and the completion. Lives in
   // localStorage via trackEvent so the host can later see how long the bulk run took.
   const startedRef = useRef(false);
+  // Guard against iOS double-tap on "פתח את WhatsApp" — a fast second tap
+  // would fire markInvited + telemetry twice. We track the most recent guest
+  // id we've already opened for; advance() clears it so the next guest is
+  // openable.
+  const lastOpenedRef = useRef<string | null>(null);
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
@@ -830,8 +931,14 @@ function BulkInviteModal({
   // The "open WhatsApp" action is wired directly on the <a> element below so
   // the click stays a real user gesture (browsers block window.open from any
   // async chain, so we deliberately avoid `window.open` here in JS).
-  const advance = () => setIndex((i) => i + 1);
-  const skip = () => setIndex((i) => i + 1);
+  const advance = () => {
+    lastOpenedRef.current = null;
+    setIndex((i) => i + 1);
+  };
+  const skip = () => {
+    lastOpenedRef.current = null;
+    setIndex((i) => i + 1);
+  };
 
   const wasOpened = opened.has(current.id);
   const sentSoFar = opened.size;
@@ -908,6 +1015,11 @@ function BulkInviteModal({
                   e.preventDefault();
                   return;
                 }
+                // Idempotent within the same step: a second rapid tap on
+                // the same guest's "open" button must NOT double-stamp
+                // markInvited or telemetry. Cleared on advance/skip.
+                if (lastOpenedRef.current === current.id) return;
+                lastOpenedRef.current = current.id;
                 actions.markInvited(current.id);
                 setOpened((prev) => {
                   const next = new Set(prev);
@@ -1001,6 +1113,15 @@ function BulkDoneScreen({
     stampedRef.current = true;
     trackEvent("bulk_send_completed", { eventId, opened, total });
   }, [eventId, opened, total]);
+
+  // Esc-to-close — keyboard parity with the click-overlay path above.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   return (
     <div

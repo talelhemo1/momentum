@@ -75,9 +75,39 @@ export default function LiveEventPage() {
   const { state, hydrated } = useAppState();
   const [now, setNow] = useState<number>(() => Date.now());
 
+  // Tick once a second — but only while the tab is foregrounded. A live
+  // event page left in a background tab used to keep ticking forever and
+  // drained battery on phones in pocket. The visibility gate skips the
+  // setState while hidden; we resume on visibilitychange.
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
+    let id: number | null = null;
+    const start = () => {
+      if (id !== null) return;
+      id = window.setInterval(() => setNow(Date.now()), 1000);
+    };
+    const stop = () => {
+      if (id !== null) {
+        window.clearInterval(id);
+        id = null;
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        // Refresh the displayed time IMMEDIATELY when the tab regains focus.
+        // Without this, the countdown showed the stale value from when we
+        // paused, until the next 1s tick fired.
+        setNow(Date.now());
+        start();
+      } else {
+        stop();
+      }
+    };
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      stop();
+    };
   }, []);
 
   // Track view on first mount (analytics-light, local-only).
@@ -224,36 +254,47 @@ function FindMyTable() {
   const [code, setCode] = useState("");
   const [resolved, setResolved] = useState<{ guestName: string; tableName: string; tableId: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Single-flight guard against double-Enter / double-tap on submit. Without
+  // this, holding Enter fires duplicate trackEvent + duplicate UI updates.
+  const lookingUpRef = useRef(false);
 
   const lookup = (e: React.FormEvent) => {
     e.preventDefault();
+    if (lookingUpRef.current) return;
     setError(null);
     const trimmed = code.trim();
     if (!trimmed) return;
-    // Match by exact guest id (RSVP code) OR by case-insensitive name as a friendly fallback.
-    const lower = trimmed.toLowerCase();
-    const guest =
-      state.guests.find((g) => g.id === trimmed) ??
-      state.guests.find((g) => g.name.toLowerCase() === lower);
-    if (!guest) {
-      setError("הקוד לא נמצא. בדוק עם בעלי האירוע.");
-      setResolved(null);
-      return;
+    lookingUpRef.current = true;
+    try {
+      const lower = trimmed.toLowerCase();
+      // Case-insensitive match on BOTH the id and the name. UUIDs aren't
+      // case-sensitive in practice but a copy-paste with one wrong case
+      // shouldn't lock a guest out, and "Tal" vs "tal" should resolve.
+      const guest =
+        state.guests.find((g) => g.id.toLowerCase() === lower) ??
+        state.guests.find((g) => g.name.toLowerCase().includes(lower));
+      if (!guest) {
+        setError("הקוד לא נמצא. בדוק עם בעלי האירוע.");
+        setResolved(null);
+        return;
+      }
+      const tableId = state.seatAssignments[guest.id];
+      if (!tableId) {
+        setError("עוד לא הוקצה לך שולחן. שאל את המארחים.");
+        setResolved(null);
+        return;
+      }
+      const table = state.tables.find((t) => t.id === tableId);
+      if (!table) {
+        setError("שולחן לא נמצא.");
+        setResolved(null);
+        return;
+      }
+      setResolved({ guestName: guest.name, tableName: table.name, tableId: table.id });
+      trackEvent("live_table_lookup", { eventId: state.event?.id ?? "" });
+    } finally {
+      lookingUpRef.current = false;
     }
-    const tableId = state.seatAssignments[guest.id];
-    if (!tableId) {
-      setError("עוד לא הוקצה לך שולחן. שאל את המארחים.");
-      setResolved(null);
-      return;
-    }
-    const table = state.tables.find((t) => t.id === tableId);
-    if (!table) {
-      setError("שולחן לא נמצא.");
-      setResolved(null);
-      return;
-    }
-    setResolved({ guestName: guest.name, tableName: table.name, tableId: table.id });
-    trackEvent("live_table_lookup", { eventId: state.event?.id ?? "" });
   };
 
   return (

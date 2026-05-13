@@ -1,5 +1,7 @@
 "use client";
 
+import { STORAGE_KEYS } from "./storage-keys";
+
 /**
  * Tiny celebratory confetti burst — pure Canvas2D, no dependencies.
  *
@@ -134,7 +136,8 @@ export function fireConfetti(durationMs: number = 1200): void {
  */
 export function fireConfettiOnce(key: string, durationMs: number = 1200): boolean {
   if (typeof window === "undefined") return false;
-  const fullKey = `momentum.confetti.${key}.fired`;
+  // R12 §3S — centralized prefix.
+  const fullKey = `${STORAGE_KEYS.confettiPrefix}.${key}.fired`;
   try {
     if (window.localStorage.getItem(fullKey) === "1") return false;
     window.localStorage.setItem(fullKey, "1");

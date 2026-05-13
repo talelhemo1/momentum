@@ -1,16 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Header } from "@/components/Header";
 import { DashboardSkeleton } from "@/components/skeletons/PageSkeletons";
 import { useCountUp } from "@/lib/useCountUp";
 import { useAppState } from "@/lib/store";
 import { useUser } from "@/lib/user";
-import { eventSlots } from "@/lib/eventSlots";
 import { getJourneyForState, getProgress } from "@/lib/journey";
-import { EVENT_TYPE_LABELS, REGION_LABELS } from "@/lib/types";
+import { EVENT_TYPE_LABELS, REGION_LABELS, type AppState } from "@/lib/types";
 import { useNow, daysUntil } from "@/lib/useNow";
 import {
   CheckCircle2,
@@ -24,20 +23,53 @@ import {
   MapPin,
   Pencil,
   BookOpen,
-  Trophy,
-  GitBranch,
   Armchair,
   PartyPopper,
   Scale,
-  RefreshCw,
-  AlertCircle,
+  Wine,
+  ListChecks,
+  ClipboardList,
+  PieChart,
+  Clock,
+  Briefcase,
+  X,
 } from "lucide-react";
 
+/**
+ * R14 — dashboard restructure.
+ *
+ * Goal: a new user must understand the next action within 30 seconds.
+ * Order top-to-bottom:
+ *   1. Optional welcome banner (?welcome=1, post-onboarding)
+ *   2. Hero (event identity + countdown + progress)
+ *   3. NextActionCard (the single most actionable next step)
+ *   4. StatCards (guests / budget / vendors)
+ *   5. Journey (full 7 stages, expanded)
+ *   6. Tools — all 11 helpers, always visible (R15 reverted phase filtering)
+ *
+ * RestartButton was moved to /settings under a danger zone.
+ */
 export default function DashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <DashboardInner />
+    </Suspense>
+  );
+}
+
+function DashboardInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { state, hydrated } = useAppState();
   const { user, hydrated: userHydrated } = useUser();
   const now = useNow();
+
+  // ?welcome=1 means we just came from onboarding finish. We read it once,
+  // commit it to local state, then strip the query param so a refresh never
+  // re-fires the banner. The user can also dismiss with the X button.
+  const initialWelcome = searchParams.get("welcome") === "1";
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+  const showWelcome = initialWelcome && !welcomeDismissed;
 
   useEffect(() => {
     if (userHydrated && !user) {
@@ -46,6 +78,17 @@ export default function DashboardPage() {
     }
     if (hydrated && !state.event) router.replace("/onboarding");
   }, [userHydrated, user, hydrated, state.event, router]);
+
+  // R17 P1#1: scrub `?welcome=1` from the URL as soon as we've captured it
+  // into local state. The banner stays mounted for the lifetime of this
+  // session (until X or navigation), but a hard refresh won't bring it back.
+  useEffect(() => {
+    if (!initialWelcome) return;
+    const t = setTimeout(() => {
+      router.replace("/dashboard", { scroll: false });
+    }, 100);
+    return () => clearTimeout(t);
+  }, [initialWelcome, router]);
 
   // Hooks must run unconditionally — keep all useCountUp calls BEFORE the
   // skeleton early-return. We read the stat sources defensively (default 0
@@ -109,7 +152,11 @@ export default function DashboardPage() {
         })()}
 
         <div className="max-w-6xl mx-auto px-5 sm:px-8 pt-10 relative z-10">
+          {showWelcome && <WelcomeBanner onDismiss={() => setWelcomeDismissed(true)} />}
+
           <Hero event={event} daysLeft={daysLeft} progress={progress} />
+
+          <NextActionCard state={state} />
 
           <div className="mt-8 grid gap-4 md:grid-cols-3 stagger">
             <StatCard
@@ -136,19 +183,8 @@ export default function DashboardPage() {
             />
           </div>
 
-          <section className="mt-12">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="eyebrow">כלים מתקדמים</span>
-            </div>
-            <div className="grid gap-3 grid-cols-2 md:grid-cols-5 stagger">
-              <ToolLink href="/timeline" icon={<GitBranch size={18} />} label="ציר זמן" sub="כל המשימות בקו אחד" />
-              <ToolLink href="/compare" icon={<Trophy size={18} />} label="השוואת ספקים" sub={`${state.compareVendors.length} בהשוואה`} />
-              <ToolLink href="/seating" icon={<Armchair size={18} />} label="סידורי הושבה" sub={`${state.tables.length} שולחנות`} />
-              <ToolLink href="/event-day" icon={<PartyPopper size={18} />} label="יום האירוע" sub="ציר זמן חי" />
-              <ToolLink href="/balance" icon={<Scale size={18} />} label="מאזן" sub="רווח / הפסד" />
-            </div>
-          </section>
-
+          {/* Journey — moved up: it's the spine of the experience.
+              Tools are now under it, filtered by phase. */}
           <section className="mt-16">
             <div className="flex items-end justify-between mb-7 gap-4 flex-wrap">
               <div>
@@ -156,7 +192,7 @@ export default function DashboardPage() {
                 <h2 className="mt-3 text-3xl md:text-5xl font-bold tracking-tight gradient-text">
                   המסע שלך
                 </h2>
-                <p className="mt-2 text-white/55">חמישה שלבים מהתכנון ועד היום הגדול.</p>
+                <p className="mt-2 text-white/55">שלבים מהתכנון ועד היום הגדול.</p>
               </div>
               <div className="text-right">
                 <div className="text-xs text-white/45 mb-1">התקדמות</div>
@@ -185,11 +221,163 @@ export default function DashboardPage() {
               </div>
             </div>
           </section>
+
+          <ToolsSection />
         </div>
       </main>
     </>
   );
 }
+
+// ─── Welcome banner (post-onboarding) ────────────────────────────────────
+
+function WelcomeBanner({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    // R19 P2#5: this is a transient notice, not a section heading. Using
+    // role="status" + aria-live so screen readers announce it without
+    // breaking the page's heading outline (the Hero's <h1> comes next).
+    <div
+      role="status"
+      aria-live="polite"
+      className="card-gold p-6 mb-6 text-center fade-up relative"
+    >
+      {/* R19 P2#6: 44×44 minimum touch target (WCAG 2.5.5). The icon stays
+          small but the hit area is comfortably large for thumbs. */}
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="סגור את הודעת הברוכים-הבאים"
+        className="absolute top-2 start-2 p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-white/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent]"
+        style={{ color: "var(--foreground-muted)" }}
+      >
+        <X size={18} aria-hidden />
+      </button>
+      <div
+        className="inline-flex w-12 h-12 rounded-full items-center justify-center text-[--accent]"
+        style={{ background: "rgba(212,176,104,0.18)", border: "1px solid var(--border-gold)" }}
+      >
+        <PartyPopper size={22} aria-hidden />
+      </div>
+      {/* R19 P2#5: was <h2> — promoting a transient banner to h2 broke the
+          page's outline (h2 appeared before the Hero's h1). Styled the same
+          via classes; semantics now match its temporary nature. */}
+      <p className="mt-3 text-xl md:text-2xl font-bold gradient-gold">
+        יצירת האירוע הצליחה!
+      </p>
+      <p
+        className="mt-2 text-sm leading-relaxed max-w-md mx-auto"
+        style={{ color: "var(--foreground-soft)" }}
+      >
+        עכשיו הצעד החשוב הראשון: הוסף את 5 המוזמנים הראשונים שלך
+      </p>
+      <Link
+        href="/guests"
+        className="btn-gold mt-5 inline-flex items-center gap-2"
+      >
+        בוא נוסיף אורחים
+        <ArrowLeft size={14} aria-hidden />
+      </Link>
+    </div>
+  );
+}
+
+// ─── Next action card (the 30-second clue) ───────────────────────────────
+
+function NextActionCard({ state }: { state: AppState }) {
+  // First step that's both unlocked (visible) and not yet complete. If
+  // everything is done we render nothing — the journey card itself will say
+  // "ready for the day".
+  const next = useMemo(() => {
+    const journey = getJourneyForState(state);
+    return journey.find((step) => step.unlocked && !step.complete);
+  }, [state]);
+
+  if (!next) return null;
+
+  return (
+    <Link
+      href={next.def.href}
+      aria-label={`הצעד הבא: ${next.def.title}`}
+      className="card-gold p-6 mt-8 block transition group hover:translate-y-[-2px]"
+    >
+      <div className="flex items-center gap-4">
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 text-[--accent]"
+          style={{ background: "rgba(212,176,104,0.15)", border: "1px solid var(--border-gold)" }}
+        >
+          <Sparkles size={26} aria-hidden />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div
+            className="text-[10px] uppercase tracking-[0.2em]"
+            style={{ color: "var(--foreground-muted)" }}
+          >
+            הצעד הבא שלך
+          </div>
+          <div className="mt-1 text-lg md:text-xl font-bold truncate">
+            {next.def.title}
+          </div>
+          {next.def.description && (
+            <div
+              className="mt-1 text-sm leading-relaxed line-clamp-2"
+              style={{ color: "var(--foreground-soft)" }}
+            >
+              {next.def.description}
+            </div>
+          )}
+        </div>
+        <ArrowLeft
+          size={20}
+          className="text-[--accent] opacity-60 group-hover:opacity-100 shrink-0"
+          aria-hidden
+        />
+      </div>
+    </Link>
+  );
+}
+
+// ─── Tools section ───────────────────────────────────────────────────────
+// R15: phase-based filtering removed. All 11 tools are now visible on every
+// dashboard render — the previous filter hid /balance pre-event, /event-day
+// before D-1, etc., which caused users to think the app was missing features.
+// Returning to the "show everything" model.
+
+interface DashboardTool {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+}
+
+function ToolsSection() {
+  const tools: DashboardTool[] = [
+    { href: "/checklist", label: "צ'קליסט", icon: <ListChecks size={20} /> },
+    { href: "/guests", label: "אורחים", icon: <Users size={20} /> },
+    { href: "/seating", label: "סידור הושבה", icon: <Armchair size={20} /> },
+    { href: "/vendors", label: "ספקים", icon: <Briefcase size={20} /> },
+    { href: "/vendors/my", label: "הספקים שלי", icon: <ClipboardList size={20} /> },
+    { href: "/budget", label: "תקציב", icon: <Wallet size={20} /> },
+    { href: "/balance", label: "מאזן", icon: <PieChart size={20} /> },
+    { href: "/timeline", label: "ציר זמן", icon: <Clock size={20} /> },
+    { href: "/compare", label: "השוואת ספקים", icon: <Scale size={20} /> },
+    { href: "/alcohol", label: "מחשבון אלכוהול", icon: <Wine size={20} /> },
+    { href: "/event-day", label: "מצב יום האירוע", icon: <Sparkles size={20} /> },
+  ];
+
+  return (
+    <section className="mt-12">
+      <div className="flex items-center gap-2 mb-4">
+        <span className="eyebrow">כלי עזר</span>
+      </div>
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 stagger">
+        {tools.map((t) => (
+          <ToolLink key={t.href} {...t} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────
 
 function Hero({
   event,
@@ -210,6 +398,15 @@ function Hero({
   const regionLabel = REGION_LABELS[event.region as keyof typeof REGION_LABELS];
   const subjects = event.partnerName ? `${event.hostName} & ${event.partnerName}` : event.hostName;
 
+  // Bar fills 0 → progress.percent on mount. We start the rendered width at 0
+  // and flip to the real percent in an effect so the CSS transition animates;
+  // setting the real percent in render would freeze with no animation.
+  const [renderedPercent, setRenderedPercent] = useState(0);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRenderedPercent(progress.percent);
+  }, [progress.percent]);
+
   return (
     <section className="card-gold p-7 md:p-10 relative overflow-hidden fade-up">
       <div aria-hidden className="absolute -top-20 -end-20 w-72 h-72 rounded-full bg-[radial-gradient(circle,rgba(212,176,104,0.18),transparent_70%)] blur-2xl" />
@@ -219,15 +416,14 @@ function Hero({
           <span className="pill pill-gold">
             <Sparkles size={11} /> {eventLabel}
           </span>
-          <div className="flex items-center gap-2">
-            <RestartButton />
-            <Link
-              href="/onboarding?edit=1"
-              className="inline-flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded-full px-3 py-1.5 transition"
-            >
-              <Pencil size={12} /> ערוך
-            </Link>
-          </div>
+          {/* RestartButton was moved to /settings (danger zone) in R14 — the
+              dashboard hero now only carries the safe "edit event" affordance. */}
+          <Link
+            href="/onboarding?edit=1"
+            className="inline-flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded-full px-3 py-1.5 transition"
+          >
+            <Pencil size={12} /> ערוך
+          </Link>
         </div>
 
         <h1 className="mt-5 text-4xl md:text-6xl font-extrabold tracking-tight leading-[1.05]">
@@ -265,10 +461,21 @@ function Hero({
               <span><span className="ltr-num">{progress.done}</span> מתוך <span className="ltr-num">{progress.total}</span> שלבים</span>
               <span className="ltr-num">{progress.percent}%</span>
             </div>
-            <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
+            <div
+              className="h-2 rounded-full overflow-hidden"
+              style={{ background: "var(--input-bg)" }}
+              role="progressbar"
+              aria-valuenow={progress.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`התקדמות במסע ${progress.percent}%`}
+            >
               <div
-                className="h-full bg-gradient-to-r from-[#A8884A] via-[#D4B068] to-[#F4DEA9] transition-[width] duration-1000"
-                style={{ width: `${progress.percent}%` }}
+                className="h-full bg-gradient-to-r from-[#A8884A] via-[#D4B068] to-[#F4DEA9]"
+                style={{
+                  width: `${renderedPercent}%`,
+                  transition: "width 1500ms cubic-bezier(0.22, 1, 0.36, 1)",
+                }}
               />
             </div>
           </div>
@@ -278,53 +485,18 @@ function Hero({
   );
 }
 
-function RestartButton() {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-
-  const onConfirm = () => {
-    eventSlots.deleteActive();
-    setOpen(false);
-    router.push("/onboarding");
-  };
-
-  return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 text-xs text-white/60 hover:text-red-300 border border-white/10 hover:border-red-400/40 rounded-full px-3 py-1.5 transition"
-        title="התחל אירוע חדש מאפס"
-      >
-        <RefreshCw size={12} /> התחל מחדש
-      </button>
-
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)}>
-          <div className="card glass-strong p-7 w-full max-w-md scale-in" onClick={(e) => e.stopPropagation()}>
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-red-300 mb-4" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
-              <AlertCircle size={22} />
-            </div>
-            <h3 className="text-xl font-bold">להתחיל מחדש?</h3>
-            <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--foreground-soft)" }}>
-              הפעולה תמחק את האירוע הנוכחי, כולל המוזמנים, התקציב, סידורי ההושבה והצ׳קליסט. <strong>לא ניתן לשחזר אחרי הפעולה.</strong>
-              <br />
-              <br />
-              אם אתה רוצה לשמור את האירוע הזה ופשוט להוסיף עוד אחד — לחץ על שם האירוע בכותרת, ובחר &quot;אירוע חדש&quot;.
-            </p>
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button onClick={() => setOpen(false)} className="btn-secondary">ביטול</button>
-              <button onClick={onConfirm} className="rounded-full px-5 py-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition">
-                כן, מחק והתחל
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function ToolLink({ href, icon, label, sub }: { href: string; icon: React.ReactNode; label: string; sub: string }) {
+function ToolLink({
+  href,
+  icon,
+  label,
+  sub,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+  /** R15: `sub` made optional. The new tool list shows label-only cards. */
+  sub?: string;
+}) {
   return (
     <Link href={href} className="card card-hover p-4 flex flex-col gap-2 group">
       <div className="w-9 h-9 rounded-2xl flex items-center justify-center text-[--accent] group-hover:bg-[var(--secondary-button-bg-hover)] transition" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
@@ -332,7 +504,11 @@ function ToolLink({ href, icon, label, sub }: { href: string; icon: React.ReactN
       </div>
       <div>
         <div className="font-bold text-sm">{label}</div>
-        <div className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>{sub}</div>
+        {sub && (
+          <div className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
+            {sub}
+          </div>
+        )}
       </div>
     </Link>
   );
@@ -353,13 +529,25 @@ function StatCard({
   href: string;
   highlight?: boolean;
 }) {
+  // Pulse the card whenever the displayed value increases — useful signal
+  // when a guest just confirmed, the counter ticked up, the budget grew, etc.
+  // Compare the rendered string so a "₪1,200" → "₪1,300" change still fires.
+  const prevRef = useRef(value);
+  const [pulseKey, setPulseKey] = useState(0);
+  useEffect(() => {
+    if (prevRef.current === value) return;
+    prevRef.current = value;
+    setPulseKey((k) => k + 1);
+  }, [value]);
+
   return (
     <Link
       href={href}
-      className={`card card-hover p-6 block ${highlight ? "ring-gold" : ""}`}
+      key={pulseKey ? `pulse-${pulseKey}` : "stat"}
+      className={`card card-hover p-6 block ${highlight ? "ring-gold" : ""} ${pulseKey ? "stat-pulse" : ""}`}
     >
       <div className="flex items-center justify-between">
-        <div className="text-white/55 text-sm">{label}</div>
+        <div className="text-sm" style={{ color: "var(--foreground-soft)" }}>{label}</div>
         <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
           highlight
             ? "bg-gradient-to-br from-[#F4DEA9]/20 to-[#A8884A]/10 border border-[var(--border-gold)] text-[--accent]"
@@ -371,7 +559,7 @@ function StatCard({
       <div className={`mt-4 text-3xl font-bold ltr-num ${highlight ? "gradient-gold" : ""}`}>
         {value}
       </div>
-      <div className="text-xs text-white/45 mt-1.5">{sub}</div>
+      <div className="text-xs mt-1.5" style={{ color: "var(--foreground-muted)" }}>{sub}</div>
     </Link>
   );
 }
