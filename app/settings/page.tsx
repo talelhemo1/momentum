@@ -387,7 +387,16 @@ export default function SettingsPage() {
             {/* Danger zone — keep sign-out separate so accidental clicks don't sign people out. */}
             <Section icon={<AlertTriangle size={20} className="text-red-300" />} title="התנתקות" danger>
               <button
-                onClick={() => userActions.signOut().then(() => router.push("/"))}
+                onClick={async () => {
+                  // R12+ — same fix as Header: hard-reload to wipe every
+                  // in-memory cache (admin badge, supabase client, user
+                  // store) so the next render truly is signed-out.
+                  try {
+                    await userActions.signOut();
+                  } finally {
+                    window.location.href = "/";
+                  }
+                }}
                 className="w-full rounded-xl py-2.5 text-sm font-semibold transition"
                 style={{ border: "1px solid var(--border-strong)", color: "var(--foreground-soft)" }}
               >

@@ -238,7 +238,13 @@ export function VendorQuickLook({ vendor, onClose, onChat, onPick }: VendorQuick
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm"
+      // R13 — center the modal on every screen size. Previously the
+      // mobile breakpoint (<640px) used `items-end` (bottom-sheet style)
+      // which combined with R12's body padding-bottom looked "stuck" at
+      // the bottom of the screen and never opened in the middle as users
+      // expected. The R12 body padding also pushed the bottom edge of
+      // the sheet up off the screen on iOS Safari.
+      className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm overflow-y-auto"
       onClick={onClose}
       role="presentation"
     >
@@ -247,11 +253,14 @@ export function VendorQuickLook({ vendor, onClose, onChat, onPick }: VendorQuick
         role="dialog"
         aria-modal="true"
         aria-labelledby="ql-title"
-        initial={reducedMotion ? false : { y: 40, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={reducedMotion ? undefined : { y: 40, opacity: 0 }}
+        initial={reducedMotion ? false : { y: 20, opacity: 0, scale: 0.97 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        exit={reducedMotion ? undefined : { y: 20, opacity: 0, scale: 0.97 }}
         transition={{ type: "spring", stiffness: 360, damping: 32 }}
-        className="w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl"
+        // max-h capped so the modal always fits the visible viewport
+        // (uses `dvh` — dynamic vh, which honors the iOS toolbar).
+        // `my-auto` centers it when content is short.
+        className="w-full sm:max-w-2xl max-h-[92dvh] overflow-y-auto rounded-3xl my-auto"
         style={{ background: "var(--surface-1)", border: "1px solid var(--border-strong)" }}
         onClick={(e) => e.stopPropagation()}
       >

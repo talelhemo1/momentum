@@ -1,26 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
 import { Avatar } from "./Avatar";
-import { Menu, X, Sun, Moon, LogOut, Cloud, CloudOff, RefreshCw, AlertTriangle, Settings, CreditCard, Shield, HelpCircle } from "lucide-react";
+import { Menu, X, Sun, Moon, LogOut, Cloud, CloudOff, RefreshCw, AlertTriangle, Settings, CreditCard, Shield, HelpCircle, Crown } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useUser, userActions } from "@/lib/user";
 import { useSyncStatus, setupCloudSync, getLastSyncError, type SyncStatus } from "@/lib/sync";
+import { useIsAdmin } from "@/lib/useIsAdmin";
 import { EventSwitcher } from "./EventSwitcher";
 import { eventSlots } from "@/lib/eventSlots";
 import { HEADER_NAV } from "@/lib/navigation";
 
 export function Header() {
   const pathname = usePathname();
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { theme, toggle, mounted } = useTheme();
   const { user, hydrated } = useUser();
   const syncStatus = useSyncStatus();
+  // Admin badge — visible only when the signed-in email is in
+  // `admin_emails`. The hook caches the answer for the session so we
+  // don't re-query on every page navigation.
+  const isAdmin = useIsAdmin();
 
   // Wire the cloud sync writer once when the app mounts.
   useEffect(() => {
@@ -52,9 +56,20 @@ export function Header() {
   // rather than via a pathname-watching effect — keeps the close action where
   // the user can see why it happens.)
 
-  const handleSignOut = () => {
-    userActions.signOut();
-    router.push("/");
+  const handleSignOut = async () => {
+    // R12+ — was a fire-and-forget call that navigated before the
+    // Supabase signOut completed, leaving the user signed in for the
+    // next page render. Await fully + hard-reload so every in-memory
+    // cache (useIsAdmin, supabase client, useUser snapshot) starts
+    // fresh on the home page.
+    try {
+      await userActions.signOut();
+    } finally {
+      // window.location.href forces a real navigation, not Next's
+      // client-side route swap. This wipes the React tree + module
+      // scope, guaranteeing no stale state survives the sign-out.
+      window.location.href = "/";
+    }
   };
 
   return (
@@ -94,6 +109,7 @@ export function Header() {
         </nav>
 
         <div className="hidden md:flex items-center gap-2">
+          {isAdmin && <AdminBadge />}
           <EventSwitcher />
           <SyncBadge status={syncStatus} />
 
@@ -122,6 +138,7 @@ export function Header() {
         </div>
 
         <div className="md:hidden flex items-center gap-2">
+          {isAdmin && <AdminBadge compact />}
           <button
             onClick={toggle}
             aria-label="החלף ערכת נושא"
@@ -285,6 +302,31 @@ function MenuItem({ href, icon, label, badge }: { href: string; icon: React.Reac
       <span className="text-[--accent]">{icon}</span>
       <span className="flex-1">{label}</span>
       {badge && <span className="pill pill-gold !text-[10px] !py-0 !px-1.5">{badge}</span>}
+    </Link>
+  );
+}
+
+/**
+ * Gold "Admin" badge that appears in the Header only for emails in
+ * `admin_emails`. Links to the admin dashboard. `compact` mode shows
+ * just the crown icon (mobile); full mode shows the crown + label.
+ */
+function AdminBadge({ compact = false }: { compact?: boolean }) {
+  return (
+    <Link
+      href="/admin/dashboard"
+      aria-label="לוח בקרת מנהל"
+      className={`inline-flex items-center gap-1.5 rounded-full font-bold transition hover:translate-y-[-1px] ${
+        compact ? "w-11 h-11 justify-center" : "px-3.5 py-2 text-xs"
+      }`}
+      style={{
+        background: "linear-gradient(135deg, #F4DEA9, #A8884A)",
+        color: "#1A1310",
+        boxShadow: "0 4px 14px -4px rgba(212,176,104,0.5)",
+      }}
+    >
+      <Crown size={compact ? 18 : 13} aria-hidden />
+      {!compact && <span>אדמין</span>}
     </Link>
   );
 }

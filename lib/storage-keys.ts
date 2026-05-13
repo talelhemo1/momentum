@@ -43,6 +43,11 @@ export const STORAGE_KEYS = {
   analyticsEvents: "momentum.analytics.events.v1",
   /** Prefix for "have I already shown the confetti for X?" flags. */
   confettiPrefix: "momentum.confetti",
+
+  // R13 — added a 7th key for the admin-cache lookup that R12 missed.
+  /** Cached "is this user an admin" flag — avoid a Supabase round-trip
+   *  on every Header/Sidebar mount. Cleared on sign-out. */
+  adminCache: "momentum.isAdmin.v1",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

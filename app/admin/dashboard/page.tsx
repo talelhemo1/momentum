@@ -71,6 +71,10 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // R12+ — show the signed-in email on the "not authorized" screen so
+  // the user can see immediately if Google logged them in with a
+  // different Gmail than the one in admin_emails.
+  const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
 
   useEffect(() => {
     // R12 §2J — every exit path lives inside try/catch/finally so a
@@ -79,21 +83,44 @@ export default function AdminDashboardPage() {
     const controller = new AbortController();
     let aborted = false;
 
+    // Hard 10-second safety timer. If supabase.auth.getUser() hangs (it
+    // does sometimes when the session token is in a weird state), this
+    // forces the page out of the loading state with a friendly error
+    // instead of an infinite spinner. The finally block itself also
+    // flips state — but only if the async work actually completes.
+    const hardTimeout = window.setTimeout(() => {
+      if (aborted) return;
+      console.error("[admin/dashboard] hard timeout reached at 10s");
+      setError(
+        "הטעינה לוקחת יותר מהרגיל. בדוק חיבור לאינטרנט או רענן את הדף.",
+      );
+      setLoading(false);
+      setAuthChecked(true);
+    }, 10000);
+
     void (async () => {
       try {
         const supabase = getSupabase();
-        if (!supabase) return;
+        if (!supabase) {
+          setError("Supabase לא מוגדר. בדוק את הגדרות הסביבה.");
+          return;
+        }
 
         const { data: { user } } = await supabase.auth.getUser();
         if (!user?.email) {
           router.replace("/signup?returnTo=/admin/dashboard");
           return;
         }
+        // Surface the email up front so the "not authorized" view can
+        // show it. Lowercase for the admin_emails lookup since the DB
+        // row was inserted lowercase.
+        const userEmail = user.email.toLowerCase().trim();
+        setSignedInEmail(userEmail);
 
         const { data: adminRow } = (await supabase
           .from("admin_emails")
           .select("email")
-          .eq("email", user.email)
+          .eq("email", userEmail)
           .maybeSingle()) as { data: { email: string } | null };
 
         if (!adminRow) return;
@@ -127,6 +154,7 @@ export default function AdminDashboardPage() {
         // Always flip loading off — even on early returns — so the spinner
         // can never hang. authChecked also always flips so the "אין הרשאה"
         // empty state can render when applicable.
+        window.clearTimeout(hardTimeout);
         if (!aborted) {
           setLoading(false);
           setAuthChecked(true);
@@ -135,6 +163,8 @@ export default function AdminDashboardPage() {
     })();
 
     return () => {
+      aborted = true;
+      window.clearTimeout(hardTimeout);
       controller.abort();
     };
   }, [router]);
@@ -167,16 +197,48 @@ export default function AdminDashboardPage() {
             aria-hidden
           />
           <h1 className="mt-4 text-xl font-bold">הדף הזה למנהלי המערכת בלבד</h1>
+          {signedInEmail && (
+            <div
+              className="mt-4 rounded-xl p-3 text-sm font-mono ltr-num text-start"
+              style={{
+                background: "var(--input-bg)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground-soft)",
+              }}
+            >
+              <div
+                className="text-[10px] uppercase tracking-wider mb-1"
+                style={{ color: "var(--foreground-muted)" }}
+              >
+                מחובר כעת בתור
+              </div>
+              {signedInEmail}
+            </div>
+          )}
           <p
-            className="mt-3 text-sm"
+            className="mt-4 text-sm"
             style={{ color: "var(--foreground-soft)" }}
           >
-            אם אתה אמור להיות מנהל, וודא שהמייל שלך נמצא בטבלת{" "}
-            <code>admin_emails</code> ב-Supabase.
+            כדי להוסיף את המייל הזה כמנהל, הרץ ב-Supabase SQL Editor:
           </p>
+          <div
+            dir="ltr"
+            className="mt-2 rounded-xl p-3 text-xs font-mono text-start overflow-x-auto"
+            style={{
+              background: "rgba(0,0,0,0.4)",
+              border: "1px solid var(--border-gold)",
+              color: "var(--accent)",
+            }}
+          >
+            insert into admin_emails (email) values
+            <br />
+            &nbsp;&nbsp;(&apos;{signedInEmail ?? "your@email.com"}&apos;)
+            <br />
+            on conflict do nothing;
+          </div>
           <Link
             href="/"
-            className="text-xs underline mt-4 inline-block"
+            className="text-xs underline mt-5 inline-block"
             style={{ color: "var(--foreground-muted)" }}
           >
             חזרה לדף הבית

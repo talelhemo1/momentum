@@ -118,10 +118,18 @@ export function useUser() {
     };
     void init();
 
-    const sub = supabase.auth.onAuthStateChange(async (_evt, session) => {
+    // R13 fix — Phone OTP verify hang.
+    // supabase-js holds an internal mutex during onAuthStateChange dispatch.
+    // Calling getUser()/getSession() inside the callback (which syncOnLogin
+    // → pullFromCloud does) deadlocks the verifyOtp() promise indefinitely.
+    // Defer syncOnLogin to a microtask so it runs OFF the auth event's call
+    // stack — no nested supabase calls inside the listener body itself.
+    const sub = supabase.auth.onAuthStateChange((_evt, session) => {
       if (session?.user) {
         write(fromSupabaseUser(session.user));
-        await syncOnLogin();
+        queueMicrotask(() => {
+          void syncOnLogin();
+        });
       } else {
         write(null);
       }
@@ -268,8 +276,59 @@ export const userActions = {
   },
 
   async signOut() {
+    // R13 — bulletproof sign-out.
+    //
+    // Root cause we kept hitting: `useUser()` runs a
+    // `supabase.auth.getUser()` on every mount and, if it sees a valid
+    // session, rewrites the local `momentum.user.v1` with the Supabase
+    // user — undoing any signOut that didn't fully purge Supabase's
+    // localStorage. So clearing just our own key isn't enough; we have
+    // to manually nuke every `sb-*` key Supabase ever wrote, otherwise
+    // the next page load rehydrates the user from the leftover session
+    // token.
+    //
+    // Order:
+    //   1. Try the official signOut (revokes server-side session).
+    //   2. Sweep every `sb-*-auth-token` / pkce-verifier key.
+    //   3. Clear our local user record + admin cache hint.
+    //   Caller does window.location.href = "/" for a hard reload so
+    //   no in-memory state survives.
     const supabase = getSupabase();
-    if (supabase) await supabase.auth.signOut();
+    if (supabase) {
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch (e) {
+        console.error("[momentum/user] supabase signOut failed", e);
+      }
+    }
+
+    // Force-clear every Supabase localStorage key. Naming convention:
+    //   "sb-<project>-auth-token"
+    //   "sb-<project>-auth-token-code-verifier"
+    // Iterate over all keys to catch alt formats / future changes too.
+    try {
+      if (typeof window !== "undefined") {
+        const ls = window.localStorage;
+        const doomed: string[] = [];
+        for (let i = 0; i < ls.length; i += 1) {
+          const k = ls.key(i);
+          if (!k) continue;
+          if (
+            k.startsWith("sb-") &&
+            (k.includes("auth-token") || k.includes("verifier"))
+          ) {
+            doomed.push(k);
+          }
+        }
+        for (const k of doomed) ls.removeItem(k);
+        // Admin badge cache. Hard-coded key since `STORAGE_KEYS.adminCache`
+        // is a circular import risk; keeping the literal matches the value.
+        ls.removeItem("momentum.isAdmin.v1");
+      }
+    } catch (e) {
+      console.error("[momentum/user] localStorage purge failed", e);
+    }
+
     write(null);
   },
 

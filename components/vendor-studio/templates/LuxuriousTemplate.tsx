@@ -59,8 +59,23 @@ export function LuxuriousTemplate({
 
   return (
     <main className="min-h-screen" style={{ background: "var(--surface-0)" }}>
-      {/* === HERO === */}
-      <section className="relative min-h-[80vh] flex items-end overflow-hidden">
+      {/* === HERO ===
+          Layout pivots on whether the vendor uploaded a hero image:
+          - WITH image  → tall (80vh) + content pinned to bottom over the
+            gradient overlay (classic "billboard" look).
+          - WITHOUT image → shorter (auto height) + content vertically
+            centered, so the title doesn't hug the bottom of a black void
+            and the page feels "open in the middle of the screen" rather
+            than stuck at the bottom.
+          On mobile we cap at 60vh either way so the user can scroll past
+          the hero with one swipe. */}
+      <section
+        className={`relative overflow-hidden flex ${
+          heroImg
+            ? "min-h-[60vh] md:min-h-[80vh] items-end"
+            : "min-h-[50vh] md:min-h-[55vh] items-center justify-center"
+        }`}
+      >
         {heroImg && (
           <div className="absolute inset-0">
             {/* Public Supabase Storage URL — next/image needs an allow-list
@@ -75,7 +90,11 @@ export function LuxuriousTemplate({
           </div>
         )}
 
-        <div className="relative max-w-5xl mx-auto px-5 pb-16 pt-32 w-full">
+        <div
+          className={`relative max-w-5xl mx-auto px-5 w-full ${
+            heroImg ? "pb-16 pt-32" : "py-12 text-center"
+          }`}
+        >
           <div className="absolute top-6 end-5 flex items-center gap-2">
             <Logo size={18} />
             <span
@@ -86,7 +105,10 @@ export function LuxuriousTemplate({
             </span>
           </div>
 
-          <div className="max-w-2xl">
+          {/* When there's no hero image, center the title block on the
+              horizontal axis (it's a card-style introduction rather than
+              an overlay on a photo). */}
+          <div className={`max-w-2xl ${heroImg ? "" : "mx-auto"}`}>
             <div
               className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-4"
               style={{
@@ -109,7 +131,9 @@ export function LuxuriousTemplate({
             )}
 
             <div
-              className="mt-6 flex items-center gap-5 flex-wrap text-sm"
+              className={`mt-6 flex items-center gap-5 flex-wrap text-sm ${
+                heroImg ? "" : "justify-center"
+              }`}
               style={{ color: "var(--foreground-soft)" }}
             >
               {vendor.city && (
@@ -125,7 +149,11 @@ export function LuxuriousTemplate({
               <VendorRatingSummary vendorId={vendor.id} compact />
             </div>
 
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div
+              className={`mt-8 flex flex-wrap gap-3 ${
+                heroImg ? "" : "justify-center"
+              }`}
+            >
               {whatsappUrl && (
                 <a
                   href={whatsappUrl}
