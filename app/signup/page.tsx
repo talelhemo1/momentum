@@ -60,13 +60,24 @@ function SignupPageInner() {
   const [password, setPassword] = useState("");
   const [emailName, setEmailName] = useState("");
 
+  // R14 — bump on every breaking-change to /terms or /privacy. The persisted
+  // record below stores BOTH timestamp AND version, so a future audit can tell
+  // exactly which version of the terms a user agreed to.
+  const TERMS_VERSION = "1.0";
+
   // Stamp the consent in localStorage so we have an auditable record. Called
   // at the moment a signup is actually attempted (not when the box is ticked),
   // because that's when the user becomes legally bound to the terms.
   const persistConsent = () => {
     try {
-      // R12 §3S — centralized key.
-      window.localStorage.setItem(STORAGE_KEYS.termsAcceptedAt, new Date().toISOString());
+      // R12 §3S — centralized key. R14 — also write the version so we can
+      // re-prompt users who agreed to an older version.
+      const record = JSON.stringify({
+        accepted_at: new Date().toISOString(),
+        terms_version: TERMS_VERSION,
+        user_agent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      });
+      window.localStorage.setItem(STORAGE_KEYS.termsAcceptedAt, record);
     } catch {
       // localStorage might be disabled (private mode, quota); we still allow signup.
     }
@@ -266,11 +277,12 @@ function SignupPageInner() {
                   aria-required
                 />
                 <span style={{ color: "var(--foreground-soft)" }}>
-                  קראתי ואני מסכים/ה ל
+                  אני מאשר/ת שקראתי, הבנתי והסכמתי ל
                   <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-[--accent] hover:underline">תנאי השימוש</Link>
+                  <span className="ltr-num text-[--foreground-muted]"> (גרסה {TERMS_VERSION})</span>
                   {" "}ול
                   <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[--accent] hover:underline">מדיניות הפרטיות</Link>
-                  .
+                  , וכי אני בן/בת 18 ומעלה.
                 </span>
               </label>
               <ChooseStep
