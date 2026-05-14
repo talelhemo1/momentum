@@ -76,9 +76,12 @@ export function clearVendorContextCache() {
 }
 
 export function useVendorContext(): VendorContextValue {
-  const initialCache = readCache();
+  // R14 bugfix — lazy initializer so localStorage parsing only happens
+  // on mount (was firing on every render). The non-lazy form re-parsed
+  // ~50 times per session navigation, showing up as visible jank on the
+  // home page where Header re-renders on theme/scroll changes.
   const [isVendor, setIsVendor] = useState<boolean>(
-    initialCache?.isVendor ?? false,
+    () => readCache()?.isVendor ?? false,
   );
   const [vendorLanding, setVendorLanding] = useState<VendorLandingData | null>(
     null,
@@ -100,9 +103,14 @@ export function useVendorContext(): VendorContextValue {
     let cancelled = false;
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        // R14 bugfix — short-circuit anonymous users via getSession()
+        // (a synchronous local-storage check) instead of getUser() (a
+        // network round-trip to /auth/v1/user). The home page is the
+        // hottest page in the app; an unauthenticated visitor was
+        // paying for a vendor-id lookup they never needed.
+        const { data: { session } } = await supabase.auth.getSession();
         if (cancelled) return;
-        if (!user) {
+        if (!session?.user) {
           setIsVendor(false);
           setVendorLanding(null);
           setHasPaidTier(false);
@@ -113,7 +121,7 @@ export function useVendorContext(): VendorContextValue {
         const { data } = (await supabase
           .from("vendor_landings")
           .select("*")
-          .eq("owner_user_id", user.id)
+          .eq("owner_user_id", session.user.id)
           .maybeSingle()) as { data: VendorLandingData | null };
 
         if (cancelled) return;

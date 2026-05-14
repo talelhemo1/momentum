@@ -6,8 +6,6 @@ import {
   LayoutDashboard,
   Inbox,
   User,
-  Star,
-  CreditCard,
   Eye,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -30,12 +28,14 @@ interface NavItem {
   icon: ReactNode;
 }
 
+// R14 bugfix — removed "ביקורות" and "תשלומים" entries that pointed at
+// /vendors/dashboard/reviews and /vendors/dashboard/billing, neither of
+// which exist yet. Tapping them was producing a 404. Reviews live on the
+// public landing page anchor; billing redirects to /pricing.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { href: "/vendors/dashboard", label: "דשבורד", icon: <LayoutDashboard size={18} aria-hidden /> },
   { href: "/vendors/dashboard/leads", label: "לידים", icon: <Inbox size={18} aria-hidden /> },
   { href: "/dashboard/vendor-studio", label: "פרופיל", icon: <User size={18} aria-hidden /> },
-  { href: "/vendors/dashboard/reviews", label: "ביקורות", icon: <Star size={18} aria-hidden /> },
-  { href: "/vendors/dashboard/billing", label: "תשלומים", icon: <CreditCard size={18} aria-hidden /> },
 ];
 
 export function VendorNav({ publicSlug }: { publicSlug?: string | null }) {
@@ -100,7 +100,7 @@ export function VendorNav({ publicSlug }: { publicSlug?: string | null }) {
 
       {/* Mobile — sticky bottom nav. Honors safe-area inset for iOS. */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-5 backdrop-blur-md"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-3 backdrop-blur-md"
         style={{
           background: "rgba(20,16,12,0.92)",
           borderTop: "1px solid var(--border)",

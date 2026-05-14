@@ -324,6 +324,12 @@ export const userActions = {
         // Admin badge cache. Hard-coded key since `STORAGE_KEYS.adminCache`
         // is a circular import risk; keeping the literal matches the value.
         ls.removeItem("momentum.isAdmin.v1");
+        // R14 — vendor-context cache. Same reasoning: avoid the circular
+        // import, keep the literal in sync with STORAGE_KEYS.vendorContext.
+        // Without this, the next visitor (or freshly anonymous tab) sees
+        // the prior user's vendor pill for ~1s until the server check
+        // returns "no landing".
+        ls.removeItem("momentum.vendor.context.v1");
       }
     } catch (e) {
       console.error("[momentum/user] localStorage purge failed", e);

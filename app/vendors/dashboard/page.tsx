@@ -486,14 +486,18 @@ export default function VendorDashboardPage() {
             sub={`${metrics.activeLeads} ממתינים`}
             highlight={metrics.activeLeads > 0}
           />
+          {/* R14 bugfix — /vendors/dashboard/reviews and /…/billing don't
+              exist yet. Route the cards at real destinations: the public
+              landing-page reviews section (where the vendor can see their
+              own ratings) and the global /pricing page. */}
           <QuickAction
-            href="/vendors/dashboard/reviews"
+            href={`/vendor/${vendorLanding.slug}#reviews`}
             icon={<Star size={22} aria-hidden />}
             label="ביקורות"
-            sub="ראה ותגובות"
+            sub="צפה בדף הציבורי"
           />
           <QuickAction
-            href="/vendors/dashboard/billing"
+            href="/pricing"
             icon={<CreditCard size={22} aria-hidden />}
             label={hasPaidTier ? "מסלול פרימיום" : "שדרג מסלול"}
             sub={hasPaidTier ? "פעיל" : "פתוח פיצ׳רים מתקדמים"}
