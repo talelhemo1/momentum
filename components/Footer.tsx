@@ -9,7 +9,7 @@ import { Logo } from "./Logo";
 export function Footer() {
   return (
     <footer className="mt-24" style={{ borderTop: "1px solid var(--border)" }}>
-      <div className="max-w-6xl mx-auto px-5 sm:px-8 py-12 grid gap-10 md:grid-cols-4">
+      <div className="max-w-6xl mx-auto px-5 sm:px-8 py-12 grid gap-10 sm:grid-cols-2 md:grid-cols-5">
         <div className="md:col-span-2">
           <Logo size={26} />
           <p className="mt-4 text-sm max-w-sm leading-relaxed" style={{ color: "var(--foreground-soft)" }}>
@@ -31,6 +31,18 @@ export function Footer() {
             <li><Link className="hover:text-[--foreground] focus-visible:text-[--foreground]" href="/onboarding">התחל</Link></li>
             <li><Link className="hover:text-[--foreground] focus-visible:text-[--foreground]" href="/privacy">פרטיות</Link></li>
             <li><Link className="hover:text-[--foreground] focus-visible:text-[--foreground]" href="/terms">תנאים</Link></li>
+          </ul>
+        </div>
+        <div>
+          {/* R14 §K — entry point for vendor accounts. Auth/callback
+              routes signed-in vendors to /vendors/dashboard automatically;
+              non-vendors hitting that URL see an empty state with a CTA
+              to /dashboard/vendor-studio. */}
+          <h4 className="text-sm font-semibold mb-3">ספקים</h4>
+          <ul className="space-y-2 text-sm" style={{ color: "var(--foreground-soft)" }}>
+            <li><Link className="hover:text-[--foreground] focus-visible:text-[--foreground]" href="/vendors/dashboard">דשבורד הספק</Link></li>
+            <li><Link className="hover:text-[--foreground] focus-visible:text-[--foreground]" href="/vendors/join">הצטרף כספק</Link></li>
+            <li><Link className="hover:text-[--foreground] focus-visible:text-[--foreground]" href="/dashboard/vendor-studio">Vendor Studio</Link></li>
           </ul>
         </div>
       </div>

@@ -95,6 +95,32 @@ function Hero() {
           </Link>
         </div>
 
+        {/* R14 — secondary vendor-side entry. The main CTA above targets
+            couples; this is a quieter line for vendors who hear about us
+            from a couple and want to find the dashboard. Clicking goes
+            to /vendors/dashboard, which auto-redirects to /signup with
+            returnTo if the user isn't authenticated yet. */}
+        <div
+          className="mt-5 flex items-center justify-center fade-up text-sm"
+          style={{ animationDelay: "0.25s", color: "var(--foreground-muted)" }}
+        >
+          <span>ספק?</span>
+          <Link
+            href="/vendors/dashboard"
+            className="ms-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-semibold transition hover:translate-y-[-1px]"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(244,222,169,0.12), rgba(168,136,74,0.06))",
+              border: "1px solid var(--border-gold)",
+              color: "var(--accent)",
+            }}
+          >
+            <Building2 size={14} aria-hidden />
+            כניסה לדשבורד הספקים
+            <ArrowLeft size={14} aria-hidden />
+          </Link>
+        </div>
+
         <HeroPreview />
       </div>
     </section>
@@ -425,6 +451,22 @@ function CTA() {
         <div className="mt-6 text-xs flex items-center justify-center gap-4" style={{ color: "var(--foreground-muted)" }}>
           <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={12} className="text-[--accent]" />ללא תשלום להתחלה</span>
           <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={12} className="text-[--accent]" />ללא הזנת פרטי תשלום</span>
+        </div>
+
+        {/* R14 — vendor secondary entry, mirrors the one in the hero. */}
+        <div
+          className="mt-8 pt-5 border-t inline-block px-6 text-xs"
+          style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
+        >
+          ספק שירותים?{" "}
+          <Link
+            href="/vendors/dashboard"
+            className="font-semibold inline-flex items-center gap-1"
+            style={{ color: "var(--accent)" }}
+          >
+            <Building2 size={12} aria-hidden />
+            כניסה לדשבורד הספקים
+          </Link>
         </div>
       </div>
     </section>

@@ -48,6 +48,11 @@ export const STORAGE_KEYS = {
   /** Cached "is this user an admin" flag — avoid a Supabase round-trip
    *  on every Header/Sidebar mount. Cleared on sign-out. */
   adminCache: "momentum.isAdmin.v1",
+
+  // R14 — vendor identity cache. Stores {isVendor, vendorSlug, lastChecked}
+  // so the Header / nav / router decisions don't need a fresh Supabase
+  // query on every page navigation.
+  vendorContext: "momentum.vendor.context.v1",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

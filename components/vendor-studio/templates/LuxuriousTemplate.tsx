@@ -40,6 +40,9 @@ export interface TemplateProps {
   // exact same normalization (was `tel:${vendor.phone}` raw which broke on
   // numbers stored as "050-1234567" or "+972 50-123-4567").
   telUrl: string;
+  // R14 §G — opens the lead-interest modal. Lifted to VendorLandingClient
+  // so all three templates share one modal implementation + state.
+  onSendInterest: () => void;
 }
 
 export function LuxuriousTemplate({
@@ -48,6 +51,7 @@ export function LuxuriousTemplate({
   onAction,
   whatsappUrl,
   telUrl,
+  onSendInterest,
 }: TemplateProps) {
   const [activePhoto, setActivePhoto] = useState(0);
   const heroImg = vendor.hero_photo_path
@@ -154,15 +158,29 @@ export function LuxuriousTemplate({
                 heroImg ? "" : "justify-center"
               }`}
             >
+              {/* R14 §G — primary lead capture. Higher prominence than
+                  WhatsApp because it creates a trackable lead in the
+                  vendor's dashboard (SMS / WhatsApp clicks don't). */}
+              <button
+                type="button"
+                onClick={onSendInterest}
+                className="btn-gold inline-flex items-center gap-2 px-7 py-4 text-base"
+              >
+                <MessageCircle size={18} aria-hidden /> שלח התעניינות
+              </button>
               {whatsappUrl && (
                 <a
                   href={whatsappUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => onAction("whatsapp")}
-                  className="btn-gold inline-flex items-center gap-2 px-7 py-4 text-base"
+                  className="rounded-2xl px-7 py-4 text-base inline-flex items-center gap-2 backdrop-blur-md"
+                  style={{
+                    background: "rgba(255,255,255,0.08)",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                  }}
                 >
-                  <MessageCircle size={18} aria-hidden /> שלח הודעה ב-WhatsApp
+                  <MessageCircle size={18} aria-hidden /> WhatsApp
                 </a>
               )}
               {telUrl && (

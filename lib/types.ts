@@ -492,6 +492,52 @@ export interface ManagerAction {
   created_at: string;
 }
 
+// ───────────────────────── Vendor Leads (R14) ────────────────────────
+
+export type VendorLeadStatus = "pending" | "contacted" | "quoted" | "won" | "lost";
+export type VendorLeadSource = "saved" | "contact_button" | "whatsapp_click" | "manual";
+
+export interface VendorLead {
+  id: string;
+  vendor_id: string;
+  couple_user_id: string;
+  couple_name: string | null;
+  couple_email: string | null;
+  couple_phone: string | null;
+  message: string | null;
+  status: VendorLeadStatus;
+  source: VendorLeadSource | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VendorQuote {
+  id: string;
+  lead_id: string;
+  amount_agorot: number;
+  valid_until: string | null;
+  terms: string | null;
+  sent_at: string;
+  accepted_at: string | null;
+  declined_at: string | null;
+  decline_reason: string | null;
+}
+
+export const VENDOR_LEAD_STATUS_LABELS: Record<VendorLeadStatus, { label: string; color: string }> = {
+  pending: { label: "ממתין", color: "bg-amber-400/10 text-amber-400 border-amber-400/30" },
+  contacted: { label: "יצרתי קשר", color: "bg-sky-400/10 text-sky-400 border-sky-400/30" },
+  quoted: { label: "נשלחה הצעה", color: "bg-purple-400/10 text-purple-400 border-purple-400/30" },
+  won: { label: "זכייה 🎉", color: "bg-emerald-400/10 text-emerald-400 border-emerald-400/30" },
+  lost: { label: "הפסד", color: "bg-white/5 text-white/50 border-white/10" },
+};
+
+export const VENDOR_LEAD_SOURCE_LABELS: Record<VendorLeadSource, string> = {
+  saved: "נשמר ברשימה",
+  contact_button: "כפתור התעניינות",
+  whatsapp_click: "WhatsApp",
+  manual: "ידני",
+};
+
 // ───────────────────────── Vendor Studio (R20 Phase 9) ────────────────
 // Self-contained landing-page data for an approved vendor. The owner is
 // the auth user that signed up as a vendor; the public reads by slug.

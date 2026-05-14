@@ -5,11 +5,12 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
 import { Avatar } from "./Avatar";
-import { Menu, X, Sun, Moon, LogOut, Cloud, CloudOff, RefreshCw, AlertTriangle, Settings, CreditCard, Shield, HelpCircle, Crown } from "lucide-react";
+import { Menu, X, Sun, Moon, LogOut, Cloud, CloudOff, RefreshCw, AlertTriangle, Settings, CreditCard, Shield, HelpCircle, Crown, Building2 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useUser, userActions } from "@/lib/user";
 import { useSyncStatus, setupCloudSync, getLastSyncError, type SyncStatus } from "@/lib/sync";
 import { useIsAdmin } from "@/lib/useIsAdmin";
+import { useVendorContext } from "@/lib/useVendorContext";
 import { EventSwitcher } from "./EventSwitcher";
 import { eventSlots } from "@/lib/eventSlots";
 import { HEADER_NAV } from "@/lib/navigation";
@@ -25,6 +26,9 @@ export function Header() {
   // `admin_emails`. The hook caches the answer for the session so we
   // don't re-query on every page navigation.
   const isAdmin = useIsAdmin();
+  // R14 — vendor pill in the header, visible only when the signed-in
+  // user owns a vendor_landing. Same UI pattern as AdminBadge.
+  const { isVendor } = useVendorContext();
 
   // Wire the cloud sync writer once when the app mounts.
   useEffect(() => {
@@ -110,6 +114,7 @@ export function Header() {
 
         <div className="hidden md:flex items-center gap-2">
           {isAdmin && <AdminBadge />}
+          {isVendor && <VendorBadge />}
           <EventSwitcher />
           <SyncBadge status={syncStatus} />
 
@@ -139,6 +144,7 @@ export function Header() {
 
         <div className="md:hidden flex items-center gap-2">
           {isAdmin && <AdminBadge compact />}
+          {isVendor && <VendorBadge compact />}
           <button
             onClick={toggle}
             aria-label="החלף ערכת נושא"
@@ -327,6 +333,37 @@ function AdminBadge({ compact = false }: { compact?: boolean }) {
     >
       <Crown size={compact ? 18 : 13} aria-hidden />
       {!compact && <span>אדמין</span>}
+    </Link>
+  );
+}
+
+/**
+ * R14 — gold "Vendor" badge in the Header. Visible only when the
+ * signed-in user owns a `vendor_landings` row (via `useVendorContext`).
+ * Mirrors AdminBadge styling so the two pills sit side-by-side cleanly
+ * when a user happens to be both an admin and a vendor. Tapping it
+ * jumps straight to `/vendors/dashboard`, the same destination as the
+ * homepage and footer entry points.
+ */
+function VendorBadge({ compact = false }: { compact?: boolean }) {
+  return (
+    <Link
+      href="/vendors/dashboard"
+      aria-label="דשבורד הספק"
+      className={`inline-flex items-center gap-1.5 rounded-full font-bold transition hover:translate-y-[-1px] ${
+        compact ? "w-11 h-11 justify-center" : "px-3.5 py-2 text-xs"
+      }`}
+      style={{
+        // Slightly inverted accent ramp from AdminBadge so the two pills
+        // are distinguishable when they appear together. Both still read
+        // as "gold" but the vendor pill leans warmer/lighter.
+        background: "linear-gradient(135deg, #E8C77A, #B58A3E)",
+        color: "#1A1310",
+        boxShadow: "0 4px 14px -4px rgba(212,176,104,0.5)",
+      }}
+    >
+      <Building2 size={compact ? 18 : 13} aria-hidden />
+      {!compact && <span>ספק</span>}
     </Link>
   );
 }

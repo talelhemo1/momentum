@@ -130,9 +130,29 @@ function CallbackInner() {
       if (cancelled) return;
 
       setStatus("ok");
-      // Send the user to onboarding (or dashboard if they already have an event).
-      // Parse the AppState properly — substring matching could false-match a guest
-      // name like '"event":{...}' that just happens to contain that text.
+      // R14 §J — three-way routing. Check vendor status first; a vendor
+      // logging in should land on /vendors/dashboard, not the couples
+      // onboarding gate. The vendor lookup is one fast indexed query.
+      let isVendor = false;
+      try {
+        const { data: vl } = (await supabase
+          .from("vendor_landings")
+          .select("id")
+          .eq("owner_user_id", session.user.id)
+          .maybeSingle()) as { data: { id: string } | null };
+        if (cancelled) return;
+        isVendor = !!vl;
+      } catch (e) {
+        console.error("[auth/callback] vendor lookup", e);
+      }
+
+      if (isVendor) {
+        router.replace("/vendors/dashboard");
+        return;
+      }
+
+      // Couple side. Parse the AppState properly — substring matching
+      // could false-match a guest name like '"event":{...}'.
       let hasEvent = false;
       try {
         const raw = window.localStorage.getItem(STORAGE_KEYS.app);
