@@ -10,11 +10,16 @@ import { normalizeIsraeliPhone } from "@/lib/phone";
  * absent inputs (the field is optional) and for valid http(s) URLs only;
  * `javascript:`, `data:`, etc. are rejected.
  */
+// R14.2 — name kept (`isHttpsUrl`) for diff-friendliness, but the body
+// now actually requires HTTPS. The earlier `http:`-allowed version was
+// inconsistent with the user-facing error message and let portfolios
+// be submitted under cleartext, which is a downgrade vector when the
+// admin dashboard renders the link.
 function isHttpsUrl(u: string | undefined | null): boolean {
   if (!u) return true;
   try {
     const url = new URL(u);
-    return url.protocol === "https:" || url.protocol === "http:";
+    return url.protocol === "https:";
   } catch {
     return false;
   }
@@ -61,7 +66,19 @@ export async function POST(req: NextRequest) {
 
     // Rate-limit BEFORE we parse the body. A spammer who hits the limit
     // shouldn't get their bytes parsed or their phone number normalized.
-    const earlyIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    //
+    // R14.2 — `x-forwarded-for` is trivially spoofed by a client (any
+    // value rotates the bucket key, defeating the cap). On Vercel,
+    // `x-vercel-forwarded-for` is set by the platform's proxy and is
+    // NOT echoed from client headers. Prefer it; fall back to
+    // x-real-ip (also platform-set on most edges); fall back to XFF
+    // only when neither is present (e.g. local dev), where spoofing
+    // matters less because we're not in production anyway.
+    const earlyIp =
+      req.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip")?.trim() ||
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      null;
     const rl = checkApplyRateLimit(earlyIp);
     if (!rl.ok) {
       return NextResponse.json(

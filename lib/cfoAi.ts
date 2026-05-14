@@ -1,3 +1,9 @@
+// R14.2 — server-only guard. The doc-comment says "server-only" but
+// nothing actually enforced it; a future value-import from a client
+// component would silently ship OPENAI_API_KEY env references to the
+// browser. With this import in place, that becomes a build error.
+import "server-only";
+
 /**
  * Wedding CFO — receipt-extraction AI (R20 Phase 7).
  *

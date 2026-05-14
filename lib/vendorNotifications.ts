@@ -1,3 +1,8 @@
+// R14.2 — server-only guard. Prevents the RESEND_API_KEY /
+// CALLMEBOT_* env-var references from ever appearing in a client
+// bundle by accident.
+import "server-only";
+
 /**
  * Notification dispatcher for new vendor applications.
  *

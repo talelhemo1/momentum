@@ -1,3 +1,7 @@
+// R14.2 — server-only guard. Prevents TWILIO_AUTH_TOKEN / RESEND_API_KEY
+// env-var references from ever appearing in a client bundle.
+import "server-only";
+
 /**
  * Rich vendor notifications — SMS (Twilio) + email (Resend).
  *

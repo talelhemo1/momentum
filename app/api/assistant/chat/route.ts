@@ -85,8 +85,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "הודעה ארוכה מדי" }, { status: 400 });
     }
 
-    // ── Auth + quota (best-effort; falls through if Supabase isn't set up
-    //    or if the request is anonymous, e.g. local-only mode) ──────────
+    // ── Auth + quota ──────────────────────────────────────────────────
+    // R14.2 — was "best-effort" with a silent fall-through that let
+    // anonymous callers consume OpenAI tokens without ever hitting the
+    // daily quota. Now we REQUIRE a Bearer token whenever Supabase is
+    // configured. Without that, anyone who knows the endpoint could
+    // burn the OpenAI budget indefinitely.
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     let userId: string | null = null;
@@ -97,12 +101,26 @@ export async function POST(req: NextRequest) {
 
     if (supabaseUrl && anonKey) {
       const auth = req.headers.get("authorization");
-      if (auth?.startsWith("Bearer ")) {
+      if (!auth?.startsWith("Bearer ")) {
+        return NextResponse.json(
+          { error: "התחבר כדי להשתמש בעוזר." },
+          { status: 401 },
+        );
+      }
+      {
         supabase = createClient(supabaseUrl, anonKey, {
           global: { headers: { Authorization: `Bearer ${auth.slice(7)}` } },
         });
         const { data: userData } = await supabase.auth.getUser();
-        if (userData.user) {
+        if (!userData.user) {
+          // R14.2 — an invalid / expired Bearer token must NOT silently
+          // fall through to the OpenAI call. Reject explicitly.
+          return NextResponse.json(
+            { error: "ההתחברות פגה. התחבר שוב." },
+            { status: 401 },
+          );
+        }
+        {
           userId = userData.user.id;
           // `profiles` is optional. maybeSingle() returns null when the row
           // doesn't exist (vs single() which would 406). Free tier is the

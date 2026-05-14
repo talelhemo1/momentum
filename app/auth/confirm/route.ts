@@ -78,8 +78,34 @@ export async function GET(request: NextRequest) {
 
   // Honor the next/redirect_to param. We only allow same-origin redirects
   // so a malicious template can't smuggle the user to an arbitrary site.
-  const safeNext = next.startsWith("/")
+  //
+  // SECURITY: `next.startsWith("/")` alone is NOT enough — browsers treat
+  // `//evil.com/path` as a protocol-relative URL, so `${origin}//evil.com`
+  // navigates to `https://evil.com`. Same trap with `/\evil.com` on some
+  // parsers. Reject both, plus anything that fails URL parsing or whose
+  // resolved origin doesn't match.
+  const safeNext = isSafeRelativePath(next, origin)
     ? `${origin}${next}`
     : `${origin}/auth/callback?completed=1`;
   return NextResponse.redirect(safeNext);
+}
+
+/** A `next` param is safe if it's a proper same-origin path, NOT a
+ *  scheme-relative or backslash-protocol URL that would escape the
+ *  origin. */
+function isSafeRelativePath(next: string, origin: string): boolean {
+  if (typeof next !== "string" || next.length === 0) return false;
+  // Reject protocol-relative (`//host`), backslash (`/\host`), and any
+  // value that doesn't start with a single forward slash.
+  if (!next.startsWith("/")) return false;
+  if (next.startsWith("//") || next.startsWith("/\\")) return false;
+  // Belt-and-suspenders: resolve and assert same origin. URL parsing
+  // catches embedded control chars and odd whitespace that browsers
+  // sometimes still follow.
+  try {
+    const resolved = new URL(next, origin);
+    return resolved.origin === origin;
+  } catch {
+    return false;
+  }
 }
