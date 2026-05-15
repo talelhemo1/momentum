@@ -26,10 +26,12 @@ import {
   Check,
   Clock,
   MapPin,
+  Navigation,
   X,
   AlertTriangle,
   Award,
 } from "lucide-react";
+import { buildNavigationLinks } from "@/lib/navigationLinks";
 
 /**
  * R20 Phase 2 — manager dashboard.
@@ -71,6 +73,8 @@ interface DashboardEvent {
   hostName: string;
   partnerName?: string;
   date: string;
+  synagogue?: string;
+  city?: string;
 }
 
 interface DashboardData {
@@ -232,6 +236,8 @@ export default function ManagerDashboardPage() {
             hostName: state.event.hostName,
             partnerName: state.event.partnerName,
             date: state.event.date,
+            synagogue: state.event.synagogue,
+            city: state.event.city,
           };
           // Real schema: seating assignments live on state.seatAssignments
           // (Record<guestId, tableId>), NOT a tableId field on each guest.
@@ -510,6 +516,12 @@ export default function ManagerDashboardPage() {
     );
   }
 
+  // R31 — manager-side quick navigation. Time is precious on event day:
+  // a Waze tap straight from the dashboard header.
+  const navLinks = buildNavigationLinks(
+    [data.event.synagogue, data.event.city].filter(Boolean).join(" · "),
+  );
+
   return (
     <main className="min-h-screen pb-20" style={{ background: "var(--surface-0)" }}>
       {/* R27 — Wrapped-ready prompt (24h+ after the event, shown once). */}
@@ -567,6 +579,23 @@ export default function ManagerDashboardPage() {
                 {data.event.partnerName ? ` ו-${data.event.partnerName}` : ""}
               </div>
             </div>
+            {navLinks && (
+              <a
+                href={navLinks.waze}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="ניווט לאולם ב-Waze"
+                title="ניווט לאולם"
+                className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition active:scale-95"
+                style={{
+                  background: "rgba(212,176,104,0.15)",
+                  border: "1px solid var(--border-gold)",
+                  color: "var(--accent)",
+                }}
+              >
+                <Navigation size={16} />
+              </a>
+            )}
           </div>
           <div className="text-end">
             <div className="text-2xl font-extrabold ltr-num gradient-gold">

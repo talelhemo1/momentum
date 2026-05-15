@@ -13,6 +13,7 @@ import { formatEventDate } from "@/lib/format";
 import { EVENT_TYPE_LABELS, REGION_LABELS, type AppState } from "@/lib/types";
 import { useNow, daysUntil } from "@/lib/useNow";
 import { LiveModeCTA } from "@/components/LiveModeCTA";
+import { buildNavigationLinks } from "@/lib/navigationLinks";
 import {
   CheckCircle2,
   Lock,
@@ -23,6 +24,7 @@ import {
   CalendarDays,
   Sparkles,
   MapPin,
+  Navigation,
   Pencil,
   BookOpen,
   Armchair,
@@ -398,6 +400,11 @@ function Hero({
   const eventLabel = EVENT_TYPE_LABELS[event.type as keyof typeof EVENT_TYPE_LABELS];
   const regionLabel = REGION_LABELS[event.region as keyof typeof REGION_LABELS];
   const subjects = event.partnerName ? `${event.hostName} & ${event.partnerName}` : event.hostName;
+  // R31 — quick navigation. Prefer the most specific address parts the
+  // host gave (synagogue/city); region alone is too coarse for Waze.
+  const navLinks = buildNavigationLinks(
+    [event.synagogue, event.city].filter(Boolean).join(" · "),
+  );
 
   // Bar fills 0 → progress.percent on mount. We start the rendered width at 0
   // and flip to the real percent in an effect so the CSS transition animates;
@@ -444,6 +451,17 @@ function Hero({
               <BookOpen size={15} className="text-[--accent]" />
               {event.synagogue}
             </span>
+          )}
+          {navLinks && (
+            <a
+              href={navLinks.waze}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[--accent] hover:text-white transition"
+            >
+              <Navigation size={14} />
+              פתח ב-Waze
+            </a>
           )}
         </div>
 

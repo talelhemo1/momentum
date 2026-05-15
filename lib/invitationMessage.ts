@@ -1,6 +1,7 @@
 import type { EventType } from "@/lib/types";
 import { EVENT_TYPE_LABELS } from "@/lib/types";
 import { formatEventDate } from "@/lib/format";
+import { buildNavigationLinks } from "@/lib/navigationLinks";
 
 /**
  * R28 — the polished WhatsApp invite body. Short URL only (the rich OG
@@ -41,7 +42,14 @@ export function buildWhatsappInviteMessage(input: {
     "",
   ];
   if (dateStr) lines.push(`📅 ${dateStr}`);
-  if (input.venue) lines.push(`📍 ${input.venue}`);
+  if (input.venue) {
+    lines.push(`📍 ${input.venue}`);
+    // R31 — Waze deep link on its OWN line so WhatsApp linkifies it
+    // (a URL mid-sentence isn't tappable). One tap opens Waze with the
+    // venue pre-loaded and navigation already started.
+    const nav = buildNavigationLinks(input.venue);
+    if (nav) lines.push(`🚗 ניווט ב-Waze: ${nav.waze}`);
+  }
   lines.push(
     "",
     "מוזמנים לחגוג איתנו!",

@@ -4,6 +4,26 @@
 
 ---
 
+## [R31] — 2026-05-17 — קישורי ניווט בהזמנות (Waze + Google + Apple)
+
+לכל הזמנה ומסך — כפתור ניווט בלחיצה אחת. Waze כברירת-מחדל בישראל
+(`&navigate=yes` מתחיל ניווט מיד), לצד Google/Apple Maps לבחירת המוזמן.
+ללא מיגרציה / env — שינוי client/helper טהור, בטוח לפריסה לבד.
+tsc/lint(0)/build/test(9/9, ‎+3 חדשים) ירוקים; כרטיס ה-RSVP אומת חי בתצוגה.
+
+### נוסף
+- `lib/navigationLinks.ts` — `buildNavigationLinks(address)` → Waze/Google/Apple + `primary`, או `null`. טהור, איזומורפי, `encodeURIComponent` (עברית/גרשיים/פסיקים/סוגריים בטוחים).
+- הודעת WhatsApp: שורת `🚗 ניווט ב-Waze: …` בשורה נפרדת (כדי ש-WhatsApp יזהה כקישור).
+- עמוד RSVP: כרטיס "איך מגיעים?" עם 3 כפתורים (Waze/Google/Apple); מוסתר כשאין venue.
+- דשבורד (לינק "פתח ב-Waze"), יום-אירוע + LiveMode (כפתור "ניווט לאולם"), דשבורד-מנהל (אייקון Waze בכותרת הדביקה).
+- `tests/navigationLinks.test.ts` — 3 בדיקות (קידוד, פסיק/סוגריים, null → הסתרה).
+
+### הערות
+- כתובת הניווט = `synagogue · city` הקיים (כפי שכבר מוצג ב-📍 ובדשבורד).
+- כפתור Apple Maps מוצג לכולם — בישראל רוב משתמשי Apple Maps ב-iPhone; ללא UA-sniffing, בלי כפתור שבור.
+
+---
+
 ## [R30] — 2026-05-18 — סריקת באגים: הקשחת אבטחה ותיקוני נכונות
 
 3 סוכני סקירה עברו על R18–R29. 46 ראוטים, tsc/lint(0)/build/test ירוקים.

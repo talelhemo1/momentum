@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Users,
   MapPin,
+  Navigation,
   CalendarDays,
   Heart,
   Sparkles,
@@ -32,6 +33,7 @@ import {
   X,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
+import { buildNavigationLinks } from "@/lib/navigationLinks";
 import { buildManagerInviteWhatsapp } from "@/lib/managerInvitation";
 import { LiveModeView } from "@/components/eventDay/LiveModeView";
 import QRCode from "qrcode";
@@ -217,6 +219,11 @@ export default function EventDayPage() {
   const event = state.event;
   const eventLabel = EVENT_TYPE_LABELS[event.type];
   const subjects = event.partnerName ? `${event.hostName} & ${event.partnerName}` : event.hostName;
+  // R31 — event-day navigation. The manager's most time-critical action
+  // is "get me to the venue now", so it gets a prominent button.
+  const navLinks = buildNavigationLinks(
+    [event.synagogue, event.city].filter(Boolean).join(" · "),
+  );
   const dateFmt = new Date(event.date).toLocaleDateString("he-IL", {
     weekday: "long",
     day: "2-digit",
@@ -272,6 +279,16 @@ export default function EventDayPage() {
               <div className="text-end">
                 <div className="text-xs uppercase tracking-wider" style={{ color: "var(--foreground-muted)" }}>שעה כעת</div>
                 <div className="text-5xl md:text-6xl font-extrabold tracking-tight gradient-gold ltr-num">{timeNow}</div>
+                {navLinks && (
+                  <a
+                    href={navLinks.waze}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-gold mt-3 inline-flex items-center justify-center gap-2 text-sm py-2.5 px-4"
+                  >
+                    <Navigation size={16} /> ניווט לאולם
+                  </a>
+                )}
               </div>
             </div>
           </section>

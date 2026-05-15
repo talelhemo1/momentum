@@ -16,6 +16,7 @@ import { parseRsvpQuery } from "@/lib/rsvpLinks";
 import { fireConfetti } from "@/lib/confetti";
 import { showToast } from "@/components/Toast";
 import { tryGetPublicOrigin } from "@/lib/origin";
+import { buildNavigationLinks } from "@/lib/navigationLinks";
 import {
   decodeInvitation,
   buildGuestResponseWhatsappLink,
@@ -138,6 +139,19 @@ function RsvpInner() {
     }
     return null;
   }, [tokenOk, tokenQuery, payload, state.event, state.guests]);
+
+  // R31 — navigation deep links. The event "address" is the venue/city
+  // pair the host entered (no single venue field in the schema). Null
+  // when neither is set → the "how to get there" card is hidden entirely
+  // (never a broken button). Declared before the early returns so the
+  // hook order stays stable.
+  const venueText = [resolved?.synagogue, resolved?.city]
+    .filter(Boolean)
+    .join(" · ");
+  const navLinks = useMemo(
+    () => buildNavigationLinks(venueText),
+    [venueText],
+  );
 
   // Track view on first render with a resolved payload — only once per page load.
   const trackedRef = useRef(false);
@@ -282,6 +296,70 @@ function RsvpInner() {
           synagogue={resolved.synagogue}
           guestName={resolved.guest.name}
         />
+
+        {venueText && navLinks && (
+          <div className="card-gold p-5 mt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <MapPin size={20} className="text-[--accent]" />
+              <h3 className="font-bold">איך מגיעים?</h3>
+            </div>
+            <p
+              className="text-sm mb-4"
+              style={{ color: "var(--foreground-soft)" }}
+            >
+              {venueText}
+            </p>
+
+            <div className="grid grid-cols-3 gap-2">
+              <a
+                href={navLinks.waze}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-2xl py-3 px-2 text-center transition hover:bg-white/5 active:scale-95"
+                style={{
+                  background: "var(--input-bg)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div className="text-2xl mb-1">🚗</div>
+                <div className="text-xs font-semibold">Waze</div>
+              </a>
+              <a
+                href={navLinks.googleMaps}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-2xl py-3 px-2 text-center transition hover:bg-white/5 active:scale-95"
+                style={{
+                  background: "var(--input-bg)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div className="text-2xl mb-1">🗺️</div>
+                <div className="text-xs font-semibold">Google Maps</div>
+              </a>
+              <a
+                href={navLinks.appleMaps}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-2xl py-3 px-2 text-center transition hover:bg-white/5 active:scale-95"
+                style={{
+                  background: "var(--input-bg)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div className="text-2xl mb-1">🍎</div>
+                <div className="text-xs font-semibold">Apple Maps</div>
+              </a>
+            </div>
+
+            <p
+              className="text-[10px] text-center mt-3"
+              style={{ color: "var(--foreground-muted)" }}
+            >
+              💡 לחיצה על Waze פותחת ישר את האפליקציה עם הניווט
+            </p>
+          </div>
+        )}
 
         {submitted ? (
           <>

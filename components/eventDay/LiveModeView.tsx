@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Camera, BellRing, Crown, Loader2 } from "lucide-react";
+import { Camera, BellRing, Crown, Loader2, Navigation } from "lucide-react";
 import type { EventInfo } from "@/lib/types";
 import { getSupabase } from "@/lib/supabase";
+import { buildNavigationLinks } from "@/lib/navigationLinks";
 import { useAppState } from "@/lib/store";
 import { StatBubble } from "@/components/managerLive/StatBubble";
 import { haptic } from "@/lib/haptic";
@@ -41,6 +42,14 @@ export function LiveModeView({ event }: { event: EventInfo }) {
     for (const g of state.guests ?? []) m.set(g.id, g.name);
     return m;
   }, [state.guests]);
+  // R31 — one-tap navigation to the venue from live mode.
+  const navLinks = useMemo(
+    () =>
+      buildNavigationLinks(
+        [event.synagogue, event.city].filter(Boolean).join(" · "),
+      ),
+    [event.synagogue, event.city],
+  );
 
   const [arrivals, setArrivals] = useState<ArrivalRow[]>([]);
   const [managerName, setManagerName] = useState<string | null>(null);
@@ -157,6 +166,21 @@ export function LiveModeView({ event }: { event: EventInfo }) {
               ? `${event.hostName} ו-${event.partnerName}`
               : event.hostName}
           </h1>
+          {navLinks && (
+            <a
+              href={navLinks.waze}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center justify-center gap-2 text-sm font-semibold rounded-full px-4 py-2 transition active:scale-95"
+              style={{
+                background: "rgba(212,176,104,0.15)",
+                border: "1px solid var(--border-gold)",
+                color: "var(--accent)",
+              }}
+            >
+              <Navigation size={15} /> ניווט לאולם
+            </a>
+          )}
         </div>
 
         {/* Real-time arrivals */}
