@@ -24,6 +24,7 @@ import {
   sortVendors,
   type VendorFilters as VendorFiltersShape,
 } from "@/lib/vendorRanking";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { VendorCard } from "@/components/vendors/VendorCard";
 import { VendorFilters } from "@/components/vendors/VendorFilters";
 import { CategoryRail } from "@/components/vendors/CategoryRail";
@@ -51,10 +52,15 @@ const ADJACENT_REGIONS: Record<Region, Region[]> = {
 };
 
 export default function VendorsPage() {
+  // R15 §3G — component-level isolation. A throw inside VendorsInner
+  // (e.g. a bad vendor record, a stale event type that slipped past the
+  // §1 guards) is caught here instead of blanking the whole route.
   return (
-    <Suspense fallback={null}>
-      <VendorsInner />
-    </Suspense>
+    <ErrorBoundary section="vendors">
+      <Suspense fallback={null}>
+        <VendorsInner />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -205,7 +211,11 @@ function VendorsInner() {
   const allTypes = useMemo(() => Object.keys(VENDOR_TYPE_LABELS) as VendorType[], []);
   const featuredTypes = useMemo<VendorType[]>(() => {
     if (!state.event) return allTypes;
-    const recommended = EVENT_CONFIG[state.event.type].recommendedVendors;
+    // R15 §1A — defensive lookup. `state.event.type` can be a stale /
+    // unknown string (old localStorage, removed event type) which makes
+    // the direct index return undefined and crashes on .recommendedVendors.
+    const cfg = EVENT_CONFIG[state.event.type] ?? EVENT_CONFIG.wedding;
+    const recommended = cfg.recommendedVendors;
     return [...recommended, ...allTypes.filter((t) => !recommended.includes(t))];
   }, [state.event, allTypes]);
 

@@ -360,5 +360,18 @@ export const EVENT_CONFIG: Record<EventType, EventTypeConfig> = {
 };
 
 export function getEventConfig(type: EventType): EventTypeConfig {
-  return EVENT_CONFIG[type];
+  // R15 §1C — defensive lookup. The signature says `EventType`, but at
+  // runtime `type` can be a stale string from old localStorage or a
+  // removed event type. Falling back to the wedding config keeps the UI
+  // rendering instead of crashing on a property access of `undefined`.
+  return EVENT_CONFIG[type] ?? EVENT_CONFIG.wedding;
 }
+
+// R15 §2D — compile-time exhaustiveness guarantee. `EVENT_CONFIG` is
+// already declared as `Record<EventType, EventTypeConfig>`, but this
+// extra assignment makes the failure mode explicit and self-documenting:
+// if you add a new EventType to lib/types.ts, this line fails to compile
+// until you add the matching entry above. The `void` keeps the unused
+// binding from tripping no-unused-vars without an eslint-disable.
+const _EVENT_CONFIG_EXHAUSTIVE: Record<EventType, EventTypeConfig> = EVENT_CONFIG;
+void _EVENT_CONFIG_EXHAUSTIVE;

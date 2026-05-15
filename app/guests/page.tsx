@@ -19,6 +19,7 @@ import { fireConfettiOnce } from "@/lib/confetti";
 import { GuestsSkeleton } from "@/components/skeletons/PageSkeletons";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   GUEST_AGE_GROUP_LABELS,
   GUEST_GROUP_LABELS,
@@ -56,7 +57,19 @@ const STATUS_LABEL: Record<GuestStatus, string> = {
   maybe: "אולי",
 };
 
+// R15 §3G — thin wrapper so the component-level ErrorBoundary sits ABOVE
+// all of GuestsPageInner's hooks/early-returns. A throw anywhere in the
+// guest list, import flow, or RSVP sync is caught here, keeping the rest
+// of the app navigable instead of falling back to the full route error.
 export default function GuestsPage() {
+  return (
+    <ErrorBoundary section="guests">
+      <GuestsPageInner />
+    </ErrorBoundary>
+  );
+}
+
+function GuestsPageInner() {
   const router = useRouter();
   const { state, hydrated } = useAppState();
   const { user, hydrated: userHydrated } = useUser();

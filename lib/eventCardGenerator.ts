@@ -168,7 +168,9 @@ interface Strings {
 }
 
 function buildStrings(event: EventInfo): Strings {
-  const config = EVENT_CONFIG[event.type];
+  // R15 §1C — defensive lookup; never crash the card generator on a
+  // stale/unknown event type.
+  const config = EVENT_CONFIG[event.type] ?? EVENT_CONFIG.wedding;
   const subjects = config.invitationHostPhrase(event.hostName, event.partnerName);
   const where = [event.synagogue, event.city].filter(Boolean).join(" · ");
   return {

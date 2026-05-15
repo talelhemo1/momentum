@@ -55,8 +55,10 @@ function formatEventDate(date: string): string {
 
 /** Choose the human-friendly subjects line based on event type & partner presence. */
 function subjectsLine(event: Pick<EventInfo, "type" | "hostName" | "partnerName">): string {
-  const config = EVENT_CONFIG[event.type];
-  return config?.invitationHostPhrase(event.hostName, event.partnerName)
+  // R15 §1C — defensive lookup (was already soft-guarded by `config?.`
+  // below; normalized to the standard wedding-fallback pattern).
+  const config = EVENT_CONFIG[event.type] ?? EVENT_CONFIG.wedding;
+  return config.invitationHostPhrase(event.hostName, event.partnerName)
     ?? (event.partnerName ? `${event.hostName} ו${event.partnerName}` : event.hostName);
 }
 

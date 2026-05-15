@@ -27,7 +27,10 @@ export default function GlobalError({
     // Surface the underlying error to whoever is monitoring (DevTools console
     // in development, observability stack in production).
     // We don't ship Sentry yet — when it lands, this is the wire-up point.
-    console.error("[momentum/route-error]", error);
+    // R15 §3F — tag aligned to "[momentum/error-boundary]" so support can
+    // tell a user "open the Console and send a screenshot of the line
+    // starting with [momentum/error-boundary]" and reliably get the stack.
+    console.error("[momentum/error-boundary]", error);
   }, [error]);
 
   return (

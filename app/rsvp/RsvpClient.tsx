@@ -183,7 +183,9 @@ function RsvpInner() {
     );
   }
 
-  const config = EVENT_CONFIG[resolved.eventType];
+  // R15 §1C — defensive lookup. RSVP data comes from a shared link, so
+  // the event type is fully attacker/staleness-controlled.
+  const config = EVENT_CONFIG[resolved.eventType] ?? EVENT_CONFIG.wedding;
   const subjects = config.invitationHostPhrase(resolved.hostName, resolved.partnerName);
 
   const respond = async (status: GuestStatus) => {

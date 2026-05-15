@@ -184,7 +184,10 @@ export function buildDefaultChecklist(type: EventType, eventDate?: string): Chec
     const probe = new Date(eventDate);
     if (Number.isNaN(probe.getTime())) return [];
   }
-  return DEFAULTS[type].map((task) => ({
+  // R15 §2E — DEFAULTS is a full Record<EventType, …>, but a stale event
+  // type still yields undefined at runtime; fall back to the wedding
+  // checklist instead of crashing on `.map of undefined`.
+  return (DEFAULTS[type] ?? DEFAULTS.wedding).map((task) => ({
     id: crypto.randomUUID(),
     title: task.title,
     phase: task.phase,

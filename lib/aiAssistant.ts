@@ -60,7 +60,8 @@ export function generateAssistantReply(message: string, state: AppState): string
 
   // Vendor / supplier questions
   if (/ספק|צלם|אולם|קייטרינג|תקליטן|dj|פרחים|איפור|שמלה|רב|מוהל/.test(text)) {
-    const recommended = EVENT_CONFIG[event.type].recommendedVendors.slice(0, 5);
+    // R15 §1B — defensive lookup; see lib/eventConfig.ts getEventConfig.
+    const recommended = (EVENT_CONFIG[event.type] ?? EVENT_CONFIG.wedding).recommendedVendors.slice(0, 5);
     const inRegion = VENDORS.filter((v) => v.region === event.region).length;
     const saved = state.selectedVendors.length;
     if (saved === 0) {

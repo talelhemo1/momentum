@@ -16,7 +16,9 @@ import { normalizeIsraeliPhone } from "./phone";
  */
 
 export function buildInvitationMessage(guest: Guest, event: EventInfo, rsvpUrl: string): string {
-  const config = EVENT_CONFIG[event.type];
+  // R15 §1C — defensive lookup; a stale event type must not break the
+  // WhatsApp invitation builder.
+  const config = EVENT_CONFIG[event.type] ?? EVENT_CONFIG.wedding;
   const eventDate = new Date(event.date);
   const date = Number.isNaN(eventDate.getTime())
     ? ""

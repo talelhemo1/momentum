@@ -142,7 +142,8 @@ function OnboardingInner() {
 
   const totalSteps = 4;
   const progress = ((step + 1) / totalSteps) * 100;
-  const config = type ? EVENT_CONFIG[type] : null;
+  // R15 §1C — defensive lookup behind the null-guard.
+  const config = type ? (EVENT_CONFIG[type] ?? EVENT_CONFIG.wedding) : null;
 
   const canNext = (() => {
     if (!type) return false;
@@ -343,7 +344,8 @@ function Step1({
   guardianConsent: boolean;
   setGuardianConsent: (v: boolean) => void;
 }) {
-  const config = type ? EVENT_CONFIG[type] : null;
+  // R15 §1C — defensive lookup behind the null-guard.
+  const config = type ? (EVENT_CONFIG[type] ?? EVENT_CONFIG.wedding) : null;
   const isMinorEvent = type ? MINOR_EVENT_TYPES.includes(type) : false;
   const justPicked = useRef(false);
 
@@ -655,7 +657,8 @@ function HebrewDateField({
 function Step2({ date, setDate, type }: { date: string; setDate: (s: string) => void; type: EventType | null }) {
   const now = useNow(null); // single snapshot is fine for the date picker
   const days = daysUntil(date, now);
-  const eventLabel = type ? EVENT_CONFIG[type].label : "האירוע";
+  // R15 §1C — defensive lookup behind the null-guard.
+  const eventLabel = type ? (EVENT_CONFIG[type] ?? EVENT_CONFIG.wedding).label : "האירוע";
 
   return (
     <div>
@@ -739,7 +742,8 @@ function Step4({
   guestEstimate: string;
   setGuestEstimate: (s: string) => void;
 }) {
-  const avg = type ? EVENT_CONFIG[type].avgPerGuest : 350;
+  // R15 §1C — defensive lookup behind the null-guard.
+  const avg = type ? (EVENT_CONFIG[type] ?? EVENT_CONFIG.wedding).avgPerGuest : 350;
   const presets = (() => {
     if (!type) return [50000, 100000, 150000, 250000];
     const base = avg;
@@ -820,7 +824,7 @@ function Step4({
                 </div>
               </div>
               <div className="text-end">
-                <div className="text-xs text-white/50">ממוצע ל{type ? EVENT_CONFIG[type].label : "אירוע"}</div>
+                <div className="text-xs text-white/50">ממוצע ל{type ? (EVENT_CONFIG[type] ?? EVENT_CONFIG.wedding).label : "אירוע"}</div>
                 <div className="text-sm font-semibold text-white/80 ltr-num mt-2">
                   ~₪{avg.toLocaleString("he-IL")}
                 </div>
