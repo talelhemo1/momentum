@@ -1,6 +1,7 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { rateLimit } from "@/lib/serverRateLimit";
 
 /**
  * POST /api/ai/packages  (R22 §C)
@@ -27,24 +28,10 @@ interface PackagesBody {
 
 const DAILY_QUOTA = 5;
 
-// userId → { day: "YYYY-MM-DD", count }
-const rateMap = new Map<string, { day: string; count: number }>();
-
-function israelDayKey(): string {
-  // Coarse "today" bucket. Server runs UTC; this is fine for a soft cap.
-  return new Date().toISOString().slice(0, 10);
-}
-
+// R30 — was a bespoke Map that grew one entry per user forever (leak).
+// The shared limiter self-prunes expired windows.
 function bumpRate(userId: string): boolean {
-  const day = israelDayKey();
-  const cur = rateMap.get(userId);
-  if (!cur || cur.day !== day) {
-    rateMap.set(userId, { day, count: 1 });
-    return true;
-  }
-  if (cur.count >= DAILY_QUOTA) return false;
-  cur.count += 1;
-  return true;
+  return rateLimit("ai-packages", userId, DAILY_QUOTA, 24 * 60 * 60 * 1000);
 }
 
 const SYSTEM_PROMPT = `אתה יועץ תקציב אירועים ישראלי. בהינתן תקציב כולל, מספר מוזמנים, סוג אירוע ושלוש עדיפויות — החזר בדיוק 3 חבילות פיצול שונות לאותו תקציב כולל.

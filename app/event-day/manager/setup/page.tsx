@@ -178,9 +178,20 @@ export default function EventManagerSetupPage() {
       // window.open — browsers block popups from async chains that left
       // the user's click gesture. We resolve the promise afterwards to
       // update the done-screen status.
+      // R30 — the SMS route now requires the caller's Supabase session
+      // (it was unauthenticated). We already awaited getUser above so a
+      // session exists; getSession here is cheap and the popup gesture
+      // is preserved (window.open already runs post-insert-await).
+      const { data: { session: smsSession } } =
+        await supabase.auth.getSession();
       const smsPromise = fetch("/api/manager/invite", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(smsSession?.access_token
+            ? { Authorization: `Bearer ${smsSession.access_token}` }
+            : {}),
+        },
         body: JSON.stringify({
           eventId: state.event!.id,
           managerName: trimmedName,

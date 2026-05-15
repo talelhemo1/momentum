@@ -135,14 +135,31 @@ export default function EventDayPage() {
       eventHostName,
       eventDate: state.event.date,
     };
-    // Fire SMS backup (don't await — keep the WhatsApp gesture).
-    void fetch("/api/manager/invite", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventId: state.event.id, ...input }),
-    }).catch(() => {});
+    const eventId = state.event.id;
+    // Open WhatsApp FIRST (synchronous — keeps the click gesture so the
+    // popup isn't blocked), THEN fire the SMS backup. R30: the SMS route
+    // now needs the caller's Supabase token, so we fetch the session
+    // asynchronously after the popup.
     const { url } = buildManagerInviteWhatsapp(input);
     window.open(url, "_blank", "noopener,noreferrer");
+    void (async () => {
+      try {
+        const supabase = getSupabase();
+        const token = supabase
+          ? (await supabase.auth.getSession()).data.session?.access_token
+          : undefined;
+        await fetch("/api/manager/invite", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ eventId, ...input }),
+        });
+      } catch {
+        /* SMS backup is best-effort — WhatsApp already opened */
+      }
+    })();
   };
 
   const replaceManager = async () => {

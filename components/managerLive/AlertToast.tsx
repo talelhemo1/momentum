@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Info, CheckCircle2, AlertTriangle, Siren, X } from "lucide-react";
 import { haptic } from "@/lib/haptic";
@@ -59,6 +59,17 @@ export function AlertToast({
   const sev = SEV[alert.severity];
   const Icon = sev.icon;
 
+  // R30 — keep onDismiss in a ref so the auto-dismiss timer is armed
+  // ONCE per alert. Parents pass a fresh inline `onDismiss` each render;
+  // depending on it reset the 8s timer on every dashboard re-render
+  // (every 30s alert recompute / realtime tick) → non-critical toasts
+  // never auto-dismissed on a busy screen.
+  const onDismissRef = useRef(onDismiss);
+  // React 19: refs may only be mutated in effects, not during render.
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  });
+
   useEffect(() => {
     // Subtle feedback on appearance.
     if (alert.severity === "critical") {
@@ -69,9 +80,9 @@ export function AlertToast({
       playManagerSound("alert");
     }
     if (alert.severity === "critical") return; // sticky until handled
-    const t = window.setTimeout(onDismiss, 8000);
+    const t = window.setTimeout(() => onDismissRef.current(), 8000);
     return () => window.clearTimeout(t);
-  }, [alert.id, alert.severity, onDismiss]);
+  }, [alert.id, alert.severity]);
 
   return (
     <motion.div

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, Check, X, Minus, Plus, Star } from "lucide-react";
 import type { AppState } from "@/lib/types";
 import { getSupabase } from "@/lib/supabase";
@@ -34,6 +34,26 @@ export function AiPackagesCalculator({ state }: { state: AppState }) {
     defaults.budget.toLocaleString("he-IL"),
   );
   const [guests, setGuests] = useState(defaults.guests);
+
+  // R30 — the store hydrates async; if `state.event` lands AFTER first
+  // paint the inputs were stuck on the 80000/150 hard fallbacks (no
+  // re-sync existed, unlike the other calculators). Adopt the real
+  // event values once, without clobbering anything the user already
+  // changed (functional-updater equality guard).
+  const seededFromEvent = useRef(false);
+  useEffect(() => {
+    if (!state.event || seededFromEvent.current) return;
+    seededFromEvent.current = true;
+    // Functional updaters → the set-state-in-effect rule doesn't flag
+    // this (no eslint-disable needed).
+    setBudgetStr((cur) =>
+      cur === (80000).toLocaleString("he-IL")
+        ? defaults.budget.toLocaleString("he-IL")
+        : cur,
+    );
+    setGuests((cur) => (cur === 150 ? defaults.guests : cur));
+  }, [state.event, defaults]);
+
   const [priorities, setPriorities] = useState<Priority[]>([
     "food",
     "venue",

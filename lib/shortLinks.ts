@@ -35,6 +35,21 @@ export async function createShortLink(
   try {
     const supabase = getSupabase();
     if (!supabase) return null;
+
+    // R30 — dedupe: re-use an existing short id for the SAME
+    // (event_id, long_path) instead of inserting a fresh row on every
+    // cache-miss / reload / device. Without this the open-INSERT table
+    // grew one row per (re)send. (The R30 hardening migration adds a
+    // matching unique index as the hard guarantee.)
+    const existing = (await supabase
+      .from("short_links")
+      .select("short_id")
+      .eq("event_id", eventId)
+      .eq("long_path", longPath)
+      .limit(1)
+      .maybeSingle()) as { data: { short_id: string } | null };
+    if (existing.data?.short_id) return existing.data.short_id;
+
     // A couple of attempts in the (astronomically unlikely) collision case.
     for (let attempt = 0; attempt < 3; attempt++) {
       const shortId = generateShortId();

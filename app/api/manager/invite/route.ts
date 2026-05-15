@@ -1,11 +1,13 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import {
   buildInviteText,
   buildManagerInviteWhatsapp,
 } from "@/lib/managerInvitation";
 import { normalizeIsraeliPhone } from "@/lib/phone";
 import { sendSms } from "@/lib/twilioClient";
+import { rateLimit } from "@/lib/serverRateLimit";
 
 /**
  * POST /api/manager/invite  (R25 — Momentum Live dual-channel)
@@ -57,6 +59,40 @@ export async function POST(req: NextRequest) {
 
     const text = buildInviteText(inviteInput);
     const { url: waUrl } = buildManagerInviteWhatsapp(inviteInput);
+
+    // R30 SECURITY: the SMS path was fully unauthenticated → anyone
+    // could drive Twilio cost / send phishing SMS to any number. Require
+    // a Supabase session and that the caller actually owns this event's
+    // manager invite. We KEEP the 200 + waUrl contract (the client opens
+    // WhatsApp itself from a client-built url) — we only gate the SMS.
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const auth = req.headers.get("authorization");
+    if (!supabaseUrl || !anonKey || !auth?.startsWith("Bearer ")) {
+      return NextResponse.json(
+        { smsSent: false, smsError: "unauthorized", waUrl },
+        { status: 200 },
+      );
+    }
+    const supabase = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: auth } },
+    });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { smsSent: false, smsError: "unauthorized", waUrl },
+        { status: 200 },
+      );
+    }
+    // Per-host rate limit: 30 invite-SMS / hour.
+    if (!rateLimit("manager-invite", user.id, 30, 60 * 60 * 1000)) {
+      return NextResponse.json(
+        { smsSent: false, smsError: "rate_limited", waUrl },
+        { status: 200 },
+      );
+    }
 
     // SMS recipient must be E.164 (+972…). normalizeIsraeliPhone yields
     // "972XXXXXXXXX"; prefix "+".

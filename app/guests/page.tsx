@@ -252,7 +252,7 @@ function GuestsPageInner() {
     return {
       total: state.guests.length,
       confirmedCount: confirmed.length,
-      confirmedHeads: confirmed.reduce((s, g) => s + g.attendingCount, 0),
+      confirmedHeads: confirmed.reduce((s, g) => s + (g.attendingCount ?? 1), 0),
       declined: declined.length,
       invited: invited.length,
       maybe: maybe.length,

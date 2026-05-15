@@ -43,4 +43,17 @@ create policy "event-memories public read" on storage.objects
   for select using (bucket_id = 'event-memories');
 
 -- Realtime so the kiosk feed slides new uploads in live.
-alter publication supabase_realtime add table event_memories;
+-- R30 — `alter publication ... add table` is NOT idempotent (re-running
+-- throws "already member"), which contradicted this file's "safe to
+-- re-run" header. Guarded so re-runs are truly no-ops.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'event_memories'
+  ) then
+    alter publication supabase_realtime add table event_memories;
+  end if;
+end $$;

@@ -49,6 +49,23 @@ export async function generateMetadata({
   };
 }
 
+/**
+ * SECURITY (R30): short_links has an open INSERT policy (the short id is
+ * the capability), so `long_path` is attacker-influencable. Only ever
+ * redirect to a same-origin /rsvp query path. The RSVP payload is
+ * base64url (`A-Za-z0-9-_`) plus query punctuation, so a strict charset
+ * whitelist both blocks scheme/backslash phishing redirects and avoids a
+ * naive `[\\ -]` range that would wrongly reject the legit base64url `-`.
+ */
+const SAFE_RSVP_PATH = /^\/rsvp\?[A-Za-z0-9\-_=&%.]+$/;
+
+function safeRedirectPath(longPath: string | null): string | null {
+  if (!longPath) return null;
+  if (!longPath.startsWith("/rsvp?")) return null;
+  if (longPath.includes("://") || longPath.includes("\\")) return null;
+  return SAFE_RSVP_PATH.test(longPath) ? longPath : null;
+}
+
 export default async function ShortInvitePage({
   params,
 }: {
@@ -56,9 +73,10 @@ export default async function ShortInvitePage({
 }) {
   const { token } = await params;
   const longPath = await lookupShortLink(token);
+  const safePath = safeRedirectPath(longPath);
 
   // redirect() throws NEXT_REDIRECT — must run outside any try/catch.
-  if (longPath) redirect(longPath);
+  if (safePath) redirect(safePath);
 
   return (
     <main className="min-h-screen flex items-center justify-center px-5">

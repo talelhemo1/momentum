@@ -4,6 +4,32 @@
 
 ---
 
+## [R30] — 2026-05-18 — סריקת באגים: הקשחת אבטחה ותיקוני נכונות
+
+3 סוכני סקירה עברו על R18–R29. 46 ראוטים, tsc/lint(0)/build/test ירוקים.
+
+⚠️ **להריץ ב-Supabase:** `supabase/migrations/2026-05-18-r30-hardening.sql`
+(dedupe ל-short_links + אינדקס ייחודי + טריגרי הגבלת-קצב + תקרת גודל/MIME
+ל-bucket התמונות). הקוד בטוח לפריסה לפני המיגרציה — היא הערובה הקשיחה לתקרות.
+
+### אבטחה
+- **P0 Open-redirect** ב-`/i/[token]`: `redirect()` השתמש בערך DB ניתן-להשפעה (INSERT פתוח) → עכשיו whitelist קשיח לנתיב `/rsvp?` בלבד.
+- **/api/manager/invite** היה SMS לא-מאומת לחלוטין (הצפת עלויות Twilio/פישינג) → דורש session + הגבלת-קצב; שני ה-callers שולחים טוקן.
+- **/api/crisis/broadcast** — אימות `getUser()` אמיתי + הגבלת-קצב (היה בדיקת-מחרוזת בלבד).
+- **/api/ai/packages** — Map דולף הוחלף ב-`lib/serverRateLimit.ts` משותף שמתנקה.
+- `createShortLink` — dedupe (select-לפני-insert) נגד ניפוח שורות.
+
+### נכונות
+- realCostPerGuest: חיסכון שלילי → `Math.max(0,…)`.
+- תקציב: `₪NaN` על פריטים ישנים → `?? 0`. confirmedHeads: `attendingCount ?? 1`.
+- AlcoholCalculator: `needByCategory` NaN → coercion. AiPackages: ערכי-ברירת-מחדל תקועים אחרי hydration → re-sync חד-פעמי.
+- LiveModeView: מרוץ realtime (haptic/קול שווא) → guard.
+- prompt ה-Wrapped: דגל localStorage נכתב מוקדם מדי → עכשיו ב-dismiss.
+- AlertToast: טיימר 8 שנ׳ התאפס בכל render → ref יציב.
+- מיגרציית event-memories: שורת realtime לא-אידמפוטנטית → guard.
+
+---
+
 ## [R29] — 2026-05-17 — Hotfix: עמידות /i/[token] לשורת short_links חסרה
 
 תיקון: כשל Supabase / שורה חסרה גרם לדף קריסה גנרי במקום מסך "ההזמנה פגה תוקף".

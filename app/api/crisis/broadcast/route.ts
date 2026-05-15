@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { normalizeIsraeliPhone } from "@/lib/phone";
 import { sendSms } from "@/lib/twilioClient";
+import { rateLimit } from "@/lib/serverRateLimit";
 
 /**
  * POST /api/crisis/broadcast  (R27)
@@ -52,7 +53,34 @@ export async function POST(req: NextRequest) {
       global: { headers: { Authorization: `Bearer ${auth.slice(7)}` } },
     });
 
-    // RLS scopes this to managers the caller is allowed to see.
+    // R30 SECURITY: the previous code only checked the header *starts*
+    // with "Bearer " (theatre — `Authorization: Bearer x` passed). Now
+    // we actually validate the session, and rate-limit per user+event
+    // so a manager can't loop this into an SMS-bomb / Twilio cost burn.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { sent: 0, failed: 0, error: "not authenticated" },
+        { status: 200 },
+      );
+    }
+    if (
+      !rateLimit(
+        "crisis-broadcast",
+        `${user.id}:${eventId}`,
+        5,
+        15 * 60 * 1000,
+      )
+    ) {
+      return NextResponse.json(
+        { sent: 0, failed: 0, error: "rate_limited" },
+        { status: 200 },
+      );
+    }
+
+    // RLS additionally scopes this to managers the caller may see.
     const { data } = (await supabase
       .from("event_managers")
       .select("invitee_phone, status")

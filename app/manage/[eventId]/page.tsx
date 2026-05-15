@@ -178,14 +178,29 @@ export default function ManagerDashboardPage() {
     if (Date.now() - t < 24 * 60 * 60 * 1000) return;
     const key = `momentum.report.shown.v1.${eventId}`;
     try {
+      // R30 — only READ here. The "shown" flag is written when the user
+      // actually dismisses/opens the prompt (see handlers below). Writing
+      // it in the effect burned it if the component unmounted before the
+      // modal committed → the prompt then never showed on any reload.
       if (window.localStorage.getItem(key) === "1") return;
-      window.localStorage.setItem(key, "1");
     } catch {
       /* private mode — still show it this session */
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setShowReportPrompt(true);
   }, [data?.event?.date, eventId]);
+
+  const dismissReportPrompt = () => {
+    try {
+      window.localStorage.setItem(
+        `momentum.report.shown.v1.${eventId}`,
+        "1",
+      );
+    } catch {
+      /* private mode — best effort */
+    }
+    setShowReportPrompt(false);
+  };
 
   const loadData = useCallback(async () => {
     const supabase = getSupabase();
@@ -502,7 +517,7 @@ export default function ManagerDashboardPage() {
         <div
           className="fixed inset-0 z-[75] flex items-center justify-center p-5"
           style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
-          onClick={() => setShowReportPrompt(false)}
+          onClick={dismissReportPrompt}
         >
           <div
             className="card-gold p-7 text-center max-w-sm r26-rise"
@@ -517,12 +532,13 @@ export default function ManagerDashboardPage() {
             </p>
             <Link
               href={`/manage/${eventId}/report`}
+              onClick={dismissReportPrompt}
               className="btn-gold w-full mt-6 py-3 inline-flex items-center justify-center"
             >
               לצפייה בסיכום
             </Link>
             <button
-              onClick={() => setShowReportPrompt(false)}
+              onClick={dismissReportPrompt}
               className="mt-3 text-xs"
               style={{ color: "var(--foreground-muted)" }}
             >

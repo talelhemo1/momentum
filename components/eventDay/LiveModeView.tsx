@@ -47,6 +47,11 @@ export function LiveModeView({ event }: { event: EventInfo }) {
   const [managerLive, setManagerLive] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const prevCount = useRef(0);
+  // R30 — gate realtime callbacks until the initial load has set the
+  // baseline. A realtime event arriving before Promise.all resolves
+  // otherwise set prevCount from a partial snapshot and spuriously fired
+  // haptic/sound when the slower initial load landed.
+  const initialDone = useRef(false);
 
   // Initial load + realtime subscription on guest_arrivals.
   useEffect(() => {
@@ -82,6 +87,7 @@ export function LiveModeView({ event }: { event: EventInfo }) {
         | undefined;
       setManagerName(m?.invitee_name ?? null);
       setManagerLive(m?.status === "accepted");
+      initialDone.current = true;
       setLoaded(true);
     })();
 
@@ -98,6 +104,7 @@ export function LiveModeView({ event }: { event: EventInfo }) {
         } as never,
         () => {
           void (async () => {
+            if (!initialDone.current) return; // baseline not set yet
             const { data } = await supabase
               .from("guest_arrivals")
               .select("guest_id, arrived_at, plus_ones")

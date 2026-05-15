@@ -198,13 +198,16 @@ export function AlcoholCalculator() {
   // R23 — servings the host needs per category (drives the bottle picker's
   // coverage bars). Derived from the heuristic result.
   const needByCategory = useMemo<Record<DrinkCategory, number>>(() => {
-    const totalDrinks = result.totalDrinks;
+    // num() coerces NaN/Infinity (empty head/hour inputs → Number("")
+    // paths) to 0 so coverage bars never render width:NaN%.
+    const num = (v: number) => (Number.isFinite(v) && v > 0 ? v : 0);
+    const totalDrinks = num(result.totalDrinks);
     return {
-      wine: result.wine.glasses,
-      beer: Math.round(totalDrinks * shares.beer),
-      spirits: result.spirits.servings,
+      wine: num(result.wine.glasses),
+      beer: num(Math.round(totalDrinks * shares.beer)),
+      spirits: num(result.spirits.servings),
       // Soft is computed in liters; a "serving" here ≈ 0.33L.
-      soft: Math.ceil(result.soft.liters / 0.33),
+      soft: num(Math.ceil(result.soft.liters / 0.33)),
     };
   }, [result, shares.beer]);
 

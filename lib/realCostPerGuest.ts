@@ -144,13 +144,15 @@ function generateInsights(
   }
   if (alcoholPct > 15) {
     // Rough saving = the slice above a healthy ~12%.
-    const saving = shekels(breakdown.alcohol - total * 0.12);
+    // Clamp ≥0 — just over the 15% trigger the slice can be ~0/negative,
+    // which previously rendered "יחסוך בערך ₪-3,210".
+    const saving = Math.max(0, shekels(breakdown.alcohol - total * 0.12));
     out.push(
       `אלכוהול גבוה (${alcoholPct}%) — בר פתוח קצר ב-שעתיים יחסוך בערך ₪${saving.toLocaleString("he-IL")}.`,
     );
   }
   if (photoPct > 12) {
-    const saving = shekels(breakdown.photography - total * 0.1);
+    const saving = Math.max(0, shekels(breakdown.photography - total * 0.1));
     out.push(
       `צילום בדרגת פרימיום (${photoPct}%) — דרגה 2 עשויה להספיק ולחסוך כ-₪${saving.toLocaleString("he-IL")}.`,
     );

@@ -63,7 +63,9 @@ export default function BudgetPage() {
   }, [userHydrated, user, router]);
 
   const summary = useMemo(() => {
-    const totalEstimated = state.budget.reduce((s, b) => s + b.estimated, 0);
+    // ?? 0 — legacy/imported items can have `estimated: undefined`,
+    // which otherwise poisons the headline to "₪NaN".
+    const totalEstimated = state.budget.reduce((s, b) => s + (b.estimated ?? 0), 0);
     const totalActual = state.budget.reduce((s, b) => s + (b.actual ?? 0), 0);
     const totalPaid = state.budget.reduce((s, b) => s + (b.paid ?? 0), 0);
     const limit = state.event?.budgetTotal ?? 0;
