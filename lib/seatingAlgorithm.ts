@@ -35,6 +35,76 @@ function normalizeCircle(s: string | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * R17 — Implicit group matching by table name.
+ *
+ * Real-world bug from a paying user: he named tables "חברים" / "שכנים" /
+ * "משפחה" and tagged guests with `group: "friends"` / `group: "neighbors"`,
+ * then expected the smart-arrangement to seat each group at its own
+ * named table. Until R16, only the `circle` field linked guest → table.
+ * Naming a table did NOTHING for matching, which is wildly counter-intuitive.
+ *
+ * This map turns common Hebrew + English table names into the closed
+ * GuestGroup enum so a table named "חברים" implicitly matches every
+ * guest with group="friends" — without forcing the user to also set the
+ * table.circle field separately.
+ *
+ * Plurals / singular / male+female forms covered for Hebrew. English
+ * accepted too because some users mix languages.
+ */
+const TABLE_NAME_TO_GROUP: Record<string, GuestGroup> = {
+  // family
+  "משפחה": "family",
+  "משפחת הכלה": "family",
+  "משפחת החתן": "family",
+  "משפחה רחוקה": "family",
+  "משפחה קרובה": "family",
+  "family": "family",
+  // friends
+  "חברים": "friends",
+  "חברות": "friends",
+  "חברים מהצבא": "friends",
+  "חברי תיכון": "friends",
+  "חברי ילדות": "friends",
+  "חברי אוניברסיטה": "friends",
+  "חברים של החתן": "friends",
+  "חברות של הכלה": "friends",
+  "friends": "friends",
+  // work
+  "עבודה": "work",
+  "מהעבודה": "work",
+  "קולגות": "work",
+  "כיתת עבודה": "work",
+  "work": "work",
+  "colleagues": "work",
+  // neighbors
+  "שכנים": "neighbors",
+  "שכנות": "neighbors",
+  "שכני בית": "neighbors",
+  "שכני שכונה": "neighbors",
+  "neighbors": "neighbors",
+};
+
+/**
+ * Resolve a table name into a GuestGroup. Tries exact match first (lowercased
+ * + trimmed), then a fuzzy "starts with" — so "חברים מהצבא" matches "friends"
+ * even though the exact-match table is "חברים מהצבא היחידה ה-2".
+ */
+function resolveTableNameToGroup(name: string | undefined): GuestGroup | null {
+  if (!name) return null;
+  const norm = name.trim().toLowerCase();
+  if (!norm) return null;
+  // 1. Exact match
+  if (norm in TABLE_NAME_TO_GROUP) return TABLE_NAME_TO_GROUP[norm];
+  // 2. "starts with" — handles "משפחת הכלה - צד אבא" → "family"
+  for (const key in TABLE_NAME_TO_GROUP) {
+    if (norm.startsWith(key) || norm.includes(` ${key}`) || norm.includes(`${key} `)) {
+      return TABLE_NAME_TO_GROUP[key];
+    }
+  }
+  return null;
+}
+
 export interface SmartArrangementInput {
   guests: Guest[];
   tables: SeatingTable[];
@@ -168,13 +238,36 @@ function scorePlacement(
   // 0.05) but still loses to the hard capacity check above — so an
   // overflowing army-friends table spills into the next-best table
   // rather than dropping guests as unseated.
-  const tableCircle = normalizeCircle(t.table.circle);
+  //
+  // R17 fallback — also try the table NAME as an implicit circle. Lots of
+  // users name a table "חברים מהצבא" without realizing there's a separate
+  // `circle` field. Honor table.name as a circle source if table.circle
+  // wasn't set.
+  const tableCircle =
+    normalizeCircle(t.table.circle) ?? normalizeCircle(t.table.name);
   if (tableCircle) {
     for (const g of cluster) {
       const gc = normalizeCircle(g.circle);
       if (!gc) continue;
       if (gc === tableCircle) score += 50;
       else score -= 20;
+    }
+  }
+
+  // R17 — Implicit group match by table name. The user's most natural action
+  // is to name a table "חברים" / "שכנים" / "משפחה" and expect every guest
+  // tagged with the matching group to land there. Apply +50 per matching
+  // group cluster member (same magnitude as circle pinning) so the algorithm
+  // is friendly to users who never touched the circle field.
+  const inferredGroup = resolveTableNameToGroup(t.table.name);
+  if (inferredGroup) {
+    for (const g of cluster) {
+      if (g.group === inferredGroup) score += 50;
+      // Mild penalty for putting a wrong-group guest in a named-group table,
+      // so e.g. a "שכנים" guest doesn't accidentally land on the "חברים"
+      // table when there's still room on the "שכנים" table. Not as harsh as
+      // the circle mismatch (-20) because the group enum is broader.
+      else if (g.group && g.group !== inferredGroup) score -= 10;
     }
   }
 
