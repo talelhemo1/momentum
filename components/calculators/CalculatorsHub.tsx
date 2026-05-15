@@ -1,45 +1,99 @@
 "use client";
 
-import { useMemo } from "react";
-import Link from "next/link";
-import { Lightbulb, Wine, Mail, ArrowLeft } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Lightbulb } from "lucide-react";
 import type { AppState } from "@/lib/types";
-import { calcEnvelopeFromState } from "@/lib/envelope";
+import { CalculatorCard } from "./CalculatorCard";
 import { RealCostPerGuestCard } from "./RealCostPerGuestCard";
 import { WhatIfSimulator } from "./WhatIfSimulator";
+import { AiPackagesCalculator } from "./AiPackagesCalculator";
+import { AlcoholCalculator } from "./AlcoholCalculator";
+import { EnvelopeCalculator } from "./EnvelopeCalculator";
 
-/** Short, punchy fact under each calculator (R21 §I). */
-const TIPS = {
-  realCost:
+const TAB_KEY = "momentum.calc.tab.v1";
+
+type TabId =
+  | "real-cost"
+  | "what-if"
+  | "ai-packages"
+  | "alcohol"
+  | "envelope";
+
+const TABS: Array<{ id: TabId; label: string; emoji: string }> = [
+  { id: "real-cost", label: "כמה אורח עולה", emoji: "💎" },
+  { id: "what-if", label: "What If", emoji: "🎚️" },
+  { id: "ai-packages", label: "3 הצעות AI", emoji: "🤖" },
+  { id: "alcohol", label: "אלכוהול", emoji: "🍷" },
+  { id: "envelope", label: "מעטפה", emoji: "💌" },
+];
+
+const TIPS: Record<TabId, string> = {
+  "real-cost":
     "ידעת? 73% מהזוגות לא חישבו את ה'תקורה' — ₪38 לאורח שבדרך כלל נשכח.",
-  whatIf:
+  "what-if":
     "טיפ: הקטנת רשימה ב-15% חוסכת בממוצע ₪22,000 — מספיק לירח דבש.",
+  "ai-packages":
+    "ה-AI לומד ממאות אירועים אמיתיים בארץ. אין נוסחה אחת — תקציב זהה יכול לתת 3 חוויות שונות לחלוטין.",
   alcohol:
     "באירוע דתי? אנשים שותים 35% פחות — אל תכפיל כמות מאירועים אחרים.",
   envelope:
     "70% מהמעטפות באירוע ישראלי = משפחה. תכנן את ההוצאות לפי זה.",
-} as const;
+};
 
-function TipLine({ text }: { text: string }) {
-  return (
-    <div
-      className="flex items-start gap-2 text-xs rounded-xl p-2.5 mt-3"
-      style={{ background: "var(--input-bg)", color: "var(--foreground-soft)" }}
-    >
-      <Lightbulb size={14} className="mt-0.5 shrink-0 text-[--accent]" />
-      <span>{text}</span>
-    </div>
-  );
+function isTab(v: string | null): v is TabId {
+  return !!v && TABS.some((t) => t.id === v);
 }
 
 export function CalculatorsHub({ state }: { state: AppState }) {
-  const envelope = useMemo(
-    () => (state.event ? calcEnvelopeFromState(state) : null),
-    [state],
-  );
+  const [active, setActive] = useState<TabId>("real-cost");
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  // Restore from URL hash → localStorage → default. One-shot on mount.
+  useEffect(() => {
+    const fromHash = window.location.hash.replace(/^#/, "");
+    if (isTab(fromHash)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActive(fromHash);
+      return;
+    }
+    try {
+      const saved = window.localStorage.getItem(TAB_KEY);
+      if (isTab(saved)) setActive(saved);
+    } catch {
+      /* private mode — default stays */
+    }
+  }, []);
+
+  const selectTab = (id: TabId) => {
+    setActive(id);
+    try {
+      window.localStorage.setItem(TAB_KEY, id);
+      history.replaceState(null, "", `#${id}`);
+    } catch {
+      /* ignore */
+    }
+    // Center the chosen pill on mobile.
+    tabRefs.current[id]?.scrollIntoView({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  };
+
+  // Arrow-key roving between pills (a11y).
+  const onKeyNav = (e: React.KeyboardEvent, idx: number) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    // RTL: ArrowRight = previous, ArrowLeft = next.
+    const delta = e.key === "ArrowLeft" ? 1 : -1;
+    const next = (idx + delta + TABS.length) % TABS.length;
+    const id = TABS[next].id;
+    selectTab(id);
+    tabRefs.current[id]?.focus();
+  };
 
   return (
-    <section className="mt-10">
+    <section dir="rtl">
       {/* Header */}
       <div className="text-center max-w-2xl mx-auto">
         <div className="text-4xl">🧮</div>
@@ -47,7 +101,7 @@ export function CalculatorsHub({ state }: { state: AppState }) {
           מחשבונים חכמים
         </h2>
         <p className="mt-2 text-sm" style={{ color: "var(--foreground-soft)" }}>
-          כלים שיעזרו לך להחליט בקלות, בלי כאב ראש.
+          5 כלים שיעזרו לך להחליט.
         </p>
         <div
           className="mt-3 inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-full"
@@ -62,164 +116,133 @@ export function CalculatorsHub({ state }: { state: AppState }) {
         </div>
       </div>
 
-      {/* 4 cards — 1 col mobile, 2×2 desktop */}
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-        <div>
-          <RealCostPerGuestCard state={state} />
-          <TipLine text={TIPS.realCost} />
-        </div>
+      {/* Pills */}
+      <div
+        role="tablist"
+        aria-label="מחשבונים"
+        className="mt-7 flex md:justify-center gap-2 overflow-x-auto pb-2 -mx-1 px-1"
+        style={{ scrollSnapType: "x proximity", scrollPaddingInline: "50%" }}
+      >
+        {TABS.map((t, idx) => {
+          const on = active === t.id;
+          return (
+            <button
+              key={t.id}
+              ref={(el) => {
+                tabRefs.current[t.id] = el;
+              }}
+              role="tab"
+              id={`calc-tab-${t.id}`}
+              aria-selected={on}
+              aria-controls={`calc-panel-${t.id}`}
+              tabIndex={on ? 0 : -1}
+              onClick={() => selectTab(t.id)}
+              onKeyDown={(e) => onKeyNav(e, idx)}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-full text-sm font-semibold transition-all duration-300"
+              style={{
+                scrollSnapAlign: "center",
+                minHeight: 44,
+                padding: "0 18px",
+                ...(on
+                  ? {
+                      background:
+                        "linear-gradient(135deg, #F4DEA9, #A8884A)",
+                      color: "#1A1310",
+                      boxShadow: "0 4px 16px -4px rgba(212,176,104,0.6)",
+                    }
+                  : {
+                      background: "var(--surface-2)",
+                      color: "var(--foreground-soft)",
+                      border: "1px solid var(--border)",
+                    }),
+              }}
+            >
+              <span aria-hidden>{t.emoji}</span>
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
 
-        <div>
-          <WhatIfSimulator state={state} />
-          <TipLine text={TIPS.whatIf} />
-        </div>
+      {/* Gold divider */}
+      <div
+        aria-hidden
+        className="mt-1 h-px"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent, var(--border-gold), transparent)",
+        }}
+      />
 
-        {/* Alcohol — full calculator lives at /alcohol */}
-        <div>
-          <Link
-            href="/alcohol"
-            className="card-gold card-hover p-6 md:p-7 relative overflow-hidden block group"
+      {/* Panel — fades in on every tab switch */}
+      <div
+        key={active}
+        role="tabpanel"
+        id={`calc-panel-${active}`}
+        aria-labelledby={`calc-tab-${active}`}
+        className="mt-6 scale-in"
+        style={{ minHeight: 600 }}
+      >
+        {active === "real-cost" && (
+          <>
+            <RealCostPerGuestCard state={state} />
+            <HubTip text={TIPS["real-cost"]} />
+          </>
+        )}
+        {active === "what-if" && (
+          <>
+            <WhatIfSimulator state={state} />
+            <HubTip text={TIPS["what-if"]} />
+          </>
+        )}
+        {active === "ai-packages" && (
+          <CalculatorCard
+            emoji="🤖"
+            title="3 הצעות מחיר AI"
+            subtitle="אותו תקציב — 3 חוויות שונות לחלוטין, לפי העדיפויות שלך."
+            tip={TIPS["ai-packages"]}
           >
-            <div
-              aria-hidden
-              className="absolute -top-20 -end-20 w-60 h-60 rounded-full pointer-events-none"
-              style={{
-                background:
-                  "radial-gradient(circle, rgba(212,176,104,0.14), transparent 70%)",
-                filter: "blur(34px)",
-              }}
-            />
-            <div className="relative">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg md:text-xl font-bold">
-                  🍷 מחשבון אלכוהול
-                </h3>
-                <span
-                  className="w-10 h-10 rounded-full inline-flex items-center justify-center"
-                  style={{ background: "rgba(212,176,104,0.15)", color: "var(--accent)" }}
-                >
-                  <Wine size={18} />
-                </span>
-              </div>
-              <p className="mt-3 text-sm" style={{ color: "var(--foreground-soft)" }}>
-                כמה יין, וודקה, בירה ושתייה קלה צריך — לפי פרופיל השתייה,
-                סגנון הבר ומשך האירוע.
-              </p>
-              <span
-                className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold transition group-hover:gap-2.5"
-                style={{ color: "var(--accent)" }}
-              >
-                פתח את המחשבון <ArrowLeft size={15} />
-              </span>
-            </div>
-          </Link>
-          <TipLine text={TIPS.alcohol} />
-        </div>
-
-        {/* Envelope — compact summary from live state */}
-        <div>
-          <div className="card-gold p-6 md:p-7 relative overflow-hidden">
-            <div
-              aria-hidden
-              className="absolute -bottom-20 -start-20 w-60 h-60 rounded-full pointer-events-none"
-              style={{
-                background:
-                  "radial-gradient(circle, rgba(212,176,104,0.14), transparent 70%)",
-                filter: "blur(34px)",
-              }}
-            />
-            <div className="relative">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg md:text-xl font-bold">
-                  💌 מחשבון מעטפה
-                </h3>
-                <span
-                  className="w-10 h-10 rounded-full inline-flex items-center justify-center"
-                  style={{ background: "rgba(212,176,104,0.15)", color: "var(--accent)" }}
-                >
-                  <Mail size={18} />
-                </span>
-              </div>
-
-              {envelope && envelope.verdict !== "no-data" ? (
-                <>
-                  <div className="mt-5 grid grid-cols-3 gap-3 text-center">
-                    <EnvStat
-                      label="נקודת איזון"
-                      value={`₪${envelope.breakEven.toLocaleString("he-IL")}`}
-                    />
-                    <EnvStat
-                      label="מומלץ"
-                      value={`₪${envelope.withReserve.toLocaleString("he-IL")}`}
-                      highlight
-                    />
-                    <EnvStat
-                      label="ממוצע מקובל"
-                      value={`₪${envelope.typical.toLocaleString("he-IL")}`}
-                    />
-                  </div>
-                  <p
-                    className="mt-4 text-xs"
-                    style={{ color: "var(--foreground-soft)" }}
-                  >
-                    מבוסס על{" "}
-                    <span className="ltr-num font-semibold">
-                      {envelope.guestCount}
-                    </span>{" "}
-                    {envelope.countSource === "confirmed"
-                      ? "מאשרים"
-                      : "מוזמנים (הערכה)"}{" "}
-                    · {envelope.verdictLabel}
-                  </p>
-                </>
-              ) : (
-                <p
-                  className="mt-5 text-sm"
-                  style={{ color: "var(--foreground-soft)" }}
-                >
-                  הוסף תקציב ומוזמנים כדי לחשב כמה צריך להכניס במעטפות
-                  כדי לכסות את עלות האירוע.
-                </p>
-              )}
-            </div>
-          </div>
-          <TipLine text={TIPS.envelope} />
-        </div>
+            <AiPackagesCalculator state={state} />
+          </CalculatorCard>
+        )}
+        {active === "alcohol" && (
+          <CalculatorCard
+            emoji="🍷"
+            title="מחשבון אלכוהול"
+            subtitle="כמה יין, וודקה, בירה ושתייה קלה צריך — לפי פרופיל ומשך."
+            tip={TIPS.alcohol}
+          >
+            <AlcoholCalculator />
+          </CalculatorCard>
+        )}
+        {active === "envelope" && (
+          <CalculatorCard
+            emoji="💌"
+            title="מחשבון מעטפה"
+            subtitle="כמה צריך להכניס במעטפות כדי לכסות את עלות האירוע."
+            tip={TIPS.envelope}
+          >
+            <EnvelopeCalculator state={state} />
+          </CalculatorCard>
+        )}
       </div>
     </section>
   );
 }
 
-function EnvStat({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
+/** Matches the CalculatorCard footer tip so every tab ends consistently. */
+function HubTip({ text }: { text: string }) {
   return (
     <div
-      className="rounded-2xl p-3"
-      style={
-        highlight
-          ? {
-              background:
-                "linear-gradient(160deg, rgba(212,176,104,0.14), transparent)",
-              border: "1px solid var(--border-gold)",
-            }
-          : { background: "var(--input-bg)", border: "1px solid var(--border)" }
-      }
+      className="mt-4 flex items-start gap-2.5 rounded-2xl p-3.5 text-xs leading-relaxed"
+      style={{
+        background: "rgba(212,176,104,0.08)",
+        border: "1px solid var(--border-gold)",
+        color: "var(--foreground-soft)",
+      }}
     >
-      <div className="text-[10px]" style={{ color: "var(--foreground-muted)" }}>
-        {label}
-      </div>
-      <div
-        className={`mt-1 text-base font-bold ltr-num ${highlight ? "gradient-gold" : ""}`}
-      >
-        {value}
-      </div>
+      <Lightbulb size={15} className="mt-0.5 shrink-0 text-[--accent]" />
+      <span>{text}</span>
     </div>
   );
 }
