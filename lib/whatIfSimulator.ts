@@ -11,6 +11,9 @@ export type VenueTier = "garden" | "midrange" | "premium" | "luxury";
 export type MealOption = "single" | "double" | "buffet";
 export type BarHours = 0 | 2 | 4 | 6;
 export type PhotoTier = 1 | 2 | 3;
+export type DecorTier = "basic" | "standard" | "lavish";
+export type InvitationTier = "digital" | "printed" | "luxury";
+export type PhotoExtra = "album" | "drone" | "magnets" | "sameDayEdit";
 
 export interface SimulationInputs {
   guests: number;
@@ -18,6 +21,10 @@ export interface SimulationInputs {
   mealOption: MealOption;
   barHours: BarHours;
   photoTier: PhotoTier;
+  /** R23 — extra customization levers. */
+  decorTier: DecorTier;
+  invitationTier: InvitationTier;
+  photoExtras: PhotoExtra[];
 }
 
 export interface SimulationResult {
@@ -53,6 +60,28 @@ const PHOTO_MODEL: Record<PhotoTier, number> = {
   3: 1_900_000,
 };
 
+/** R23 — décor + flowers: per-guest agorot. */
+const DECOR_PER_GUEST: Record<DecorTier, number> = {
+  basic: 2_500,
+  standard: 6_000,
+  lavish: 13_000,
+};
+
+/** R23 — invitations: fixed agorot. */
+const INVITATION_MODEL: Record<InvitationTier, number> = {
+  digital: 30_000,
+  printed: 180_000,
+  luxury: 450_000,
+};
+
+/** R23 — photography add-ons: fixed agorot each. */
+const PHOTO_EXTRA_MODEL: Record<PhotoExtra, number> = {
+  album: 180_000,
+  drone: 120_000,
+  magnets: 90_000,
+  sameDayEdit: 150_000,
+};
+
 /** Biggest-first so the UI shows the most impressive equivalents. */
 const SAVINGS_THRESHOLDS: Array<{ agorot: number; label: string }> = [
   { agorot: 5_000_000, label: "מקדמה לדירה ראשונה" }, // ₪50K
@@ -70,7 +99,13 @@ export function priceOf(inputs: SimulationInputs): number {
   const meal = MEAL_PER_GUEST[inputs.mealOption] * g;
   const bar = BAR_PER_GUEST_HOUR * inputs.barHours * g;
   const photo = PHOTO_MODEL[inputs.photoTier];
-  return venue + meal + bar + photo;
+  const decor = DECOR_PER_GUEST[inputs.decorTier] * g;
+  const invitations = INVITATION_MODEL[inputs.invitationTier];
+  const extras = inputs.photoExtras.reduce(
+    (a, e) => a + PHOTO_EXTRA_MODEL[e],
+    0,
+  );
+  return venue + meal + bar + photo + decor + invitations + extras;
 }
 
 export function simulate(
@@ -105,9 +140,15 @@ export function impactHint(field: keyof SimulationInputs): string {
       return "כל שעת בר פתוח ≈ ₪30 לאורח.";
     case "photoTier":
       return "כל דרגת צילום ≈ ₪5,000–8,000 הפרש (סכום קבוע, לא לפי אורח).";
+    case "decorTier":
+      return "עיצוב מפואר מוסיף ~₪130 לאורח לעומת בסיסי (פרחים, מרכזי שולחן, תאורה).";
+    case "invitationTier":
+      return "הזמנות מודפסות ≈ ₪1,800; יוקרה ≈ ₪4,500; דיגיטלי כמעט חינם.";
+    case "photoExtras":
+      return "אלבום ₪1,800 · רחפן ₪1,200 · מגנטים ₪900 · עריכת Same-Day ₪1,500.";
     case "guests":
     default:
-      return "הקטנת הרשימה משפיעה גם על אוכל, בר וחלק מהאולם.";
+      return "הקטנת הרשימה משפיעה גם על אוכל, בר, עיצוב וחלק מהאולם.";
   }
 }
 
@@ -126,4 +167,20 @@ export const PHOTO_TIER_LABELS: Record<PhotoTier, string> = {
   1: "דרגה 1",
   2: "דרגה 2",
   3: "דרגה 3",
+};
+export const DECOR_TIER_LABELS: Record<DecorTier, string> = {
+  basic: "בסיסי",
+  standard: "סטנדרטי",
+  lavish: "מפואר",
+};
+export const INVITATION_TIER_LABELS: Record<InvitationTier, string> = {
+  digital: "דיגיטלי",
+  printed: "מודפס",
+  luxury: "יוקרה",
+};
+export const PHOTO_EXTRA_LABELS: Record<PhotoExtra, string> = {
+  album: "אלבום",
+  drone: "רחפן",
+  magnets: "מגנטים",
+  sameDayEdit: "עריכת Same-Day",
 };

@@ -21,7 +21,7 @@ type TabId =
 
 const TABS: Array<{ id: TabId; label: string; emoji: string }> = [
   { id: "real-cost", label: "כמה אורח עולה", emoji: "💎" },
-  { id: "what-if", label: "What If", emoji: "🎚️" },
+  { id: "what-if", label: "מעבדת התקציב", emoji: "🎚️" },
   { id: "ai-packages", label: "3 הצעות AI", emoji: "🤖" },
   { id: "alcohol", label: "אלכוהול", emoji: "🍷" },
   { id: "envelope", label: "מעטפה", emoji: "💌" },

@@ -18,6 +18,14 @@ import {
   type UnitPrices,
 } from "@/lib/alcoholCalculator";
 import {
+  BOTTLE_CATALOG,
+  catalogByCategory,
+  summarizeSelection,
+  DRINK_CATEGORY_LABELS,
+  type DrinkCategory,
+  type SelectedBottle,
+} from "@/lib/alcoholCatalog";
+import {
   Wine,
   Beer,
   GlassWater,
@@ -27,6 +35,9 @@ import {
   Settings,
   RefreshCw,
   ChevronDown,
+  Plus,
+  Trash2,
+  Check,
 } from "lucide-react";
 
 // Persistence: every editable slider/input survives a refresh so the host
@@ -46,6 +57,9 @@ interface PersistedSettings {
   softOnly?: boolean;
   advanced?: boolean;
   manuallyAdjusted?: { drinksPerHour?: boolean; shares?: boolean };
+  // R23 — specific bottle selection.
+  bottleSelection?: SelectedBottle[];
+  useBottleSelection?: boolean;
 }
 
 function readPersisted(): PersistedSettings {
@@ -107,6 +121,11 @@ export function AlcoholCalculator() {
   const [manualDrinksPerHour, setManualDrinksPerHour] = useState(false);
   const [manualShares, setManualShares] = useState(false);
 
+  // R23 — explicit per-bottle selection (catalog + custom + manual edit).
+  const [bottleSelection, setBottleSelection] = useState<SelectedBottle[]>([]);
+  const [useBottleSelection, setUseBottleSelection] = useState(false);
+  const [bottlesOpen, setBottlesOpen] = useState(false);
+
   const [seeded, setSeeded] = useState(false);
 
   // Hydrate from localStorage + confirmed RSVPs once.
@@ -131,6 +150,8 @@ export function AlcoholCalculator() {
     if (saved.softOnly != null) setSoftOnly(saved.softOnly);
     if (saved.manuallyAdjusted?.drinksPerHour) setManualDrinksPerHour(true);
     if (saved.manuallyAdjusted?.shares) setManualShares(true);
+    if (Array.isArray(saved.bottleSelection)) setBottleSelection(saved.bottleSelection);
+    if (saved.useBottleSelection != null) setUseBottleSelection(saved.useBottleSelection);
     setSeeded(true);
   }, [hydrated, seeded, confirmedAdultHeads, confirmedTotalHeads, event]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -157,10 +178,11 @@ export function AlcoholCalculator() {
       adultHeads, totalHeads, hours, profile, barStyle,
       drinksPerHour, shares, servings, prices, softOnly, advanced,
       manuallyAdjusted: { drinksPerHour: manualDrinksPerHour, shares: manualShares },
+      bottleSelection, useBottleSelection,
     });
   }, [seeded, adultHeads, totalHeads, hours, profile, barStyle,
       drinksPerHour, shares, servings, prices, softOnly, advanced,
-      manualDrinksPerHour, manualShares]);
+      manualDrinksPerHour, manualShares, bottleSelection, useBottleSelection]);
 
   const result = useMemo(
     () =>
@@ -172,6 +194,69 @@ export function AlcoholCalculator() {
   );
 
   const sharesSum = shares.wine + shares.beer + shares.spirits + shares.soft;
+
+  // R23 — servings the host needs per category (drives the bottle picker's
+  // coverage bars). Derived from the heuristic result.
+  const needByCategory = useMemo<Record<DrinkCategory, number>>(() => {
+    const totalDrinks = result.totalDrinks;
+    return {
+      wine: result.wine.glasses,
+      beer: Math.round(totalDrinks * shares.beer),
+      spirits: result.spirits.servings,
+      // Soft is computed in liters; a "serving" here ≈ 0.33L.
+      soft: Math.ceil(result.soft.liters / 0.33),
+    };
+  }, [result, shares.beer]);
+
+  const selectionSummary = useMemo(
+    () => summarizeSelection(bottleSelection, needByCategory),
+    [bottleSelection, needByCategory],
+  );
+
+  // Effective grand total: the explicit selection when the host opted in
+  // and actually picked bottles; otherwise the heuristic estimate.
+  const effectiveTotal =
+    useBottleSelection && bottleSelection.some((b) => b.qty > 0)
+      ? selectionSummary.totalCost
+      : result.totalCost;
+
+  const addBottleToSelection = (catalogId: string) => {
+    const cat = BOTTLE_CATALOG.find((b) => b.id === catalogId);
+    if (!cat) return;
+    setBottleSelection((cur) => {
+      if (cur.some((s) => s.id === cat.id)) return cur;
+      // Default qty ≈ enough to cover what's still missing for the category.
+      const cov = selectionSummary.byCategory.find(
+        (c) => c.category === cat.category,
+      );
+      const missing = Math.max(0, (cov?.needed ?? 0) - (cov?.provided ?? 0));
+      const qty = Math.max(1, Math.ceil(missing / Math.max(1, cat.servings)));
+      return [...cur, { ...cat, qty }];
+    });
+  };
+
+  const addCustomBottle = (category: DrinkCategory) => {
+    setBottleSelection((cur) => [
+      ...cur,
+      {
+        id: `custom-${category}-${Date.now()}`,
+        category,
+        name: "בקבוק מותאם",
+        price: 0,
+        servings: 1,
+        unit: "יחידה",
+        qty: 1,
+      },
+    ]);
+  };
+
+  const updateBottle = (id: string, patch: Partial<SelectedBottle>) =>
+    setBottleSelection((cur) =>
+      cur.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+    );
+
+  const removeBottle = (id: string) =>
+    setBottleSelection((cur) => cur.filter((s) => s.id !== id));
 
   const resetToConfirmed = () => {
     setAdultHeads(confirmedAdultHeads);
@@ -560,10 +645,12 @@ export function AlcoholCalculator() {
         <div className="mt-5 card-gold p-6 flex items-center justify-between gap-4">
           <div>
             <div className="text-sm" style={{ color: "var(--foreground-soft)" }}>
-              עלות משוערת לקנייה
+              {useBottleSelection && bottleSelection.some((b) => b.qty > 0)
+                ? "עלות לפי הבקבוקים שבחרת"
+                : "עלות משוערת לקנייה"}
             </div>
             <div className="mt-1 text-3xl font-extrabold ltr-num gradient-gold">
-              ₪{result.totalCost.toLocaleString("he-IL")}
+              ₪{effectiveTotal.toLocaleString("he-IL")}
             </div>
           </div>
           <div className="text-end">
@@ -581,7 +668,236 @@ export function AlcoholCalculator() {
           קנו ב-משווק שמסכים להחזיר בקבוקים סגורים, ככה לא תפסידו על העודפים.
         </p>
       </section>
+
+      {/* R23 — specific bottle selection (catalog + custom + manual edit) */}
+      <section className="mt-8">
+        <button
+          onClick={() => setBottlesOpen((v) => !v)}
+          className="w-full card p-4 flex items-center justify-between gap-3 text-start"
+          aria-expanded={bottlesOpen}
+        >
+          <div>
+            <div className="font-bold text-sm">🍾 בחירת בקבוקים ספציפית</div>
+            <div className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
+              בחר בקבוקים מקטלוג, ערוך כמות ומחיר ידנית — ותראה כיסוי מול הצורך.
+            </div>
+          </div>
+          <ChevronDown
+            size={18}
+            style={{ transform: bottlesOpen ? "rotate(180deg)" : undefined, transition: "transform 200ms" }}
+          />
+        </button>
+
+        {bottlesOpen && (
+          <div className="mt-3 space-y-4">
+            <label
+              className="card p-4 flex items-center justify-between gap-3 cursor-pointer"
+            >
+              <div>
+                <div className="text-sm font-semibold">
+                  השתמש בבחירה הספציפית לחישוב העלות
+                </div>
+                <div className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                  כשמסומן — סך העלות למעלה מתעדכן לפי הבקבוקים שבחרת.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={useBottleSelection}
+                onChange={(e) => setUseBottleSelection(e.target.checked)}
+                className="w-5 h-5 shrink-0"
+                style={{ accentColor: "var(--accent)" }}
+              />
+            </label>
+
+            {(["wine", "beer", "spirits", "soft"] as DrinkCategory[])
+              .filter((cat) => (needByCategory[cat] || 0) > 0)
+              .map((cat) => {
+                const cov = selectionSummary.byCategory.find(
+                  (c) => c.category === cat,
+                )!;
+                const lines = bottleSelection.filter(
+                  (s) => s.category === cat,
+                );
+                const pct =
+                  cov.needed > 0
+                    ? Math.min(100, Math.round((cov.provided / cov.needed) * 100))
+                    : 0;
+                return (
+                  <div key={cat} className="card p-4">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <h3 className="font-bold text-sm">
+                        {DRINK_CATEGORY_LABELS[cat]}
+                      </h3>
+                      <span
+                        className="text-xs ltr-num inline-flex items-center gap-1"
+                        style={{
+                          color: cov.covered
+                            ? "rgb(110,231,183)"
+                            : "var(--foreground-muted)",
+                        }}
+                      >
+                        {cov.covered && <Check size={12} />}
+                        {cov.provided}/{cov.needed} מנות
+                      </span>
+                    </div>
+                    {/* coverage bar */}
+                    <div
+                      className="h-2 rounded-full overflow-hidden mb-3"
+                      style={{ background: "var(--input-bg)" }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${pct}%`,
+                          background: cov.covered
+                            ? "linear-gradient(90deg,#34D399,#10B981)"
+                            : "linear-gradient(90deg,#F4DEA9,#A8884A)",
+                        }}
+                      />
+                    </div>
+
+                    {/* selected lines */}
+                    {lines.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {lines.map((s) => (
+                          <div
+                            key={s.id}
+                            className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 text-xs rounded-xl p-2"
+                            style={{ background: "var(--input-bg)" }}
+                          >
+                            <input
+                              value={s.name}
+                              onChange={(e) =>
+                                updateBottle(s.id, { name: e.target.value })
+                              }
+                              className="bg-transparent outline-none min-w-0 truncate"
+                              style={{ color: "var(--foreground)" }}
+                              aria-label="שם הבקבוק"
+                            />
+                            <NumberMini
+                              label="₪"
+                              value={s.price}
+                              onChange={(v) => updateBottle(s.id, { price: v })}
+                            />
+                            <NumberMini
+                              label="מנות"
+                              value={s.servings}
+                              onChange={(v) =>
+                                updateBottle(s.id, { servings: v })
+                              }
+                            />
+                            <div className="flex items-center gap-1">
+                              <NumberMini
+                                label="×"
+                                value={s.qty}
+                                onChange={(v) => updateBottle(s.id, { qty: v })}
+                              />
+                              <button
+                                onClick={() => removeBottle(s.id)}
+                                aria-label="הסר"
+                                className="p-1.5 rounded-lg hover:bg-white/5"
+                                style={{ color: "rgb(248,113,113)" }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* catalog picker */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {catalogByCategory(cat)
+                        .filter(
+                          (b) => !bottleSelection.some((s) => s.id === b.id),
+                        )
+                        .map((b) => (
+                          <button
+                            key={b.id}
+                            onClick={() => addBottleToSelection(b.id)}
+                            className="text-[11px] px-2.5 py-1.5 rounded-full inline-flex items-center gap-1 transition hover:translate-y-[-1px]"
+                            style={{
+                              background: "var(--surface-2)",
+                              border: "1px solid var(--border)",
+                              color: "var(--foreground-soft)",
+                            }}
+                          >
+                            <Plus size={11} />
+                            {b.name} · ₪{b.price}
+                          </button>
+                        ))}
+                      <button
+                        onClick={() => addCustomBottle(cat)}
+                        className="text-[11px] px-2.5 py-1.5 rounded-full inline-flex items-center gap-1"
+                        style={{
+                          background: "rgba(212,176,104,0.12)",
+                          border: "1px solid var(--border-gold)",
+                          color: "var(--accent)",
+                        }}
+                      >
+                        <Plus size={11} /> בקבוק משלי
+                      </button>
+                    </div>
+
+                    {cov.cost > 0 && (
+                      <div
+                        className="mt-3 text-xs text-end ltr-num"
+                        style={{ color: "var(--foreground-soft)" }}
+                      >
+                        סה״כ {DRINK_CATEGORY_LABELS[cat]}: ₪
+                        {cov.cost.toLocaleString("he-IL")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+            {bottleSelection.some((b) => b.qty > 0) && (
+              <div className="card-gold p-5 flex items-center justify-between">
+                <span className="text-sm" style={{ color: "var(--foreground-soft)" }}>
+                  סך הבקבוקים שבחרת
+                </span>
+                <span className="text-2xl font-extrabold ltr-num gradient-gold">
+                  ₪{selectionSummary.totalCost.toLocaleString("he-IL")}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </div>
+  );
+}
+
+/** Compact inline numeric editor used inside the bottle rows. */
+function NumberMini({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label className="inline-flex items-center gap-1">
+      <span style={{ color: "var(--foreground-muted)" }}>{label}</span>
+      <input
+        type="number"
+        inputMode="numeric"
+        min={0}
+        value={Number.isFinite(value) ? value : ""}
+        onChange={(e) => {
+          const n = Number(e.target.value);
+          if (Number.isNaN(n) || n < 0) return;
+          onChange(n);
+        }}
+        className="w-12 bg-transparent text-center outline-none ltr-num rounded"
+        style={{ color: "var(--foreground)", border: "1px solid var(--border)" }}
+      />
+    </label>
   );
 }
 

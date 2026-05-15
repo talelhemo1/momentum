@@ -10,11 +10,17 @@ import {
   VENUE_TIER_LABELS,
   MEAL_OPTION_LABELS,
   PHOTO_TIER_LABELS,
+  DECOR_TIER_LABELS,
+  INVITATION_TIER_LABELS,
+  PHOTO_EXTRA_LABELS,
   type SimulationInputs,
   type VenueTier,
   type MealOption,
   type BarHours,
   type PhotoTier,
+  type DecorTier,
+  type InvitationTier,
+  type PhotoExtra,
 } from "@/lib/whatIfSimulator";
 
 const SNAP_KEY = "momentum.whatif.snapshot.v1";
@@ -33,6 +39,9 @@ function deriveBaseline(state: AppState): SimulationInputs {
     mealOption: "single",
     barHours: 4,
     photoTier: 2,
+    decorTier: "standard",
+    invitationTier: "printed",
+    photoExtras: [],
   };
 }
 
@@ -111,7 +120,7 @@ export function WhatIfSimulator({ state }: { state: AppState }) {
       <div className="relative grid md:grid-cols-2 gap-7">
         {/* ── Controls ── */}
         <div className="space-y-6">
-          <h3 className="text-lg md:text-xl font-bold">🎚️ What If Simulator</h3>
+          <h3 className="text-lg md:text-xl font-bold">🎚️ מעבדת התקציב</h3>
 
           {/* Guests slider */}
           <div>
@@ -181,6 +190,75 @@ export function WhatIfSimulator({ state }: { state: AppState }) {
             value={inputs.photoTier}
             onChange={(v) => set("photoTier", v as PhotoTier)}
           />
+          <PillRow
+            label="עיצוב ופרחים"
+            hint={impactHint("decorTier")}
+            options={
+              Object.entries(DECOR_TIER_LABELS) as [DecorTier, string][]
+            }
+            value={inputs.decorTier}
+            onChange={(v) => set("decorTier", v)}
+          />
+          <PillRow
+            label="הזמנות"
+            hint={impactHint("invitationTier")}
+            options={
+              Object.entries(INVITATION_TIER_LABELS) as [
+                InvitationTier,
+                string,
+              ][]
+            }
+            value={inputs.invitationTier}
+            onChange={(v) => set("invitationTier", v)}
+          />
+
+          {/* Photo extras — multi-select */}
+          <div>
+            <div className="text-sm mb-1.5" style={{ color: "var(--foreground-soft)" }}>
+              תוספות צילום
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                Object.entries(PHOTO_EXTRA_LABELS) as [PhotoExtra, string][]
+              ).map(([val, lbl]) => {
+                const on = inputs.photoExtras.includes(val);
+                return (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() =>
+                      set(
+                        "photoExtras",
+                        on
+                          ? inputs.photoExtras.filter((x) => x !== val)
+                          : [...inputs.photoExtras, val],
+                      )
+                    }
+                    className="px-3.5 py-2 rounded-full text-sm transition hover:translate-y-[-1px]"
+                    style={
+                      on
+                        ? {
+                            background:
+                              "linear-gradient(135deg, #F4DEA9, #A8884A)",
+                            color: "#1A1310",
+                            fontWeight: 700,
+                          }
+                        : {
+                            background: "var(--input-bg)",
+                            color: "var(--foreground-soft)",
+                            border: "1px solid var(--border)",
+                          }
+                    }
+                  >
+                    {lbl}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] mt-1" style={{ color: "var(--foreground-muted)" }}>
+              {impactHint("photoExtras")}
+            </p>
+          </div>
 
           <div className="flex gap-2 pt-1">
             <button
