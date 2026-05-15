@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   calcEnvelopeFromState,
+  calcEnvelope,
   RELATIONSHIP_NORMS,
   calcRelationshipBreakdown,
   type RelationshipType,
@@ -18,10 +19,24 @@ import {
 } from "lucide-react";
 
 export function EnvelopeCalculator({ state }: { state: AppState }) {
-  const envelope = useMemo(
+  const baseEnvelope = useMemo(
     () => (state.event ? calcEnvelopeFromState(state) : null),
     [state],
   );
+  // R24 — "what-if" overrides: model a different total cost / guest
+  // count without touching the real budget. null = use the live value.
+  const [costOverride, setCostOverride] = useState<number | null>(null);
+  const [guestsOverride, setGuestsOverride] = useState<number | null>(null);
+
+  const envelope = useMemo(() => {
+    if (!state.event || !baseEnvelope) return baseEnvelope;
+    if (costOverride == null && guestsOverride == null) return baseEnvelope;
+    return calcEnvelope(
+      state.event.type,
+      costOverride ?? baseEnvelope.totalCost,
+      guestsOverride ?? baseEnvelope.guestCount,
+    );
+  }, [state.event, baseEnvelope, costOverride, guestsOverride]);
 
   if (!state.event || !envelope || envelope.verdict === "no-data") {
     return (
@@ -34,8 +49,75 @@ export function EnvelopeCalculator({ state }: { state: AppState }) {
     );
   }
 
+  const dirty = costOverride != null || guestsOverride != null;
+
   return (
     <div className="space-y-6">
+      {/* R24 — what-if controls */}
+      <div
+        className="rounded-2xl p-4"
+        style={{ background: "var(--input-bg)", border: "1px solid var(--border)" }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-semibold">בדיקת תרחיש</span>
+          {dirty && (
+            <button
+              onClick={() => {
+                setCostOverride(null);
+                setGuestsOverride(null);
+              }}
+              className="text-xs underline"
+              style={{ color: "var(--accent)" }}
+            >
+              חזרה לנתונים האמיתיים
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-xs block mb-1" style={{ color: "var(--foreground-soft)" }}>
+              עלות אירוע (₪)
+            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={costOverride ?? ""}
+              placeholder={String(baseEnvelope?.totalCost ?? 0)}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setCostOverride(Number.isFinite(n) && n > 0 ? n : null);
+              }}
+              className="input text-start ltr-num"
+              aria-label="עלות אירוע לבדיקה"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs block mb-1" style={{ color: "var(--foreground-soft)" }}>
+              מספר מוזמנים
+            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={guestsOverride ?? ""}
+              placeholder={String(baseEnvelope?.guestCount ?? 0)}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setGuestsOverride(Number.isFinite(n) && n > 0 ? n : null);
+              }}
+              className="input text-start ltr-num"
+              aria-label="מספר מוזמנים לבדיקה"
+            />
+          </label>
+        </div>
+        {dirty && (
+          <p className="text-[11px] mt-2" style={{ color: "var(--accent)" }}>
+            מוצג תרחיש מדומה — לא משנה את התקציב האמיתי שלך.
+          </p>
+        )}
+      </div>
+
       <EnvelopeCard
         envelope={envelope}
         guests={envelope.guestCount}

@@ -24,13 +24,22 @@ const fmt = (agorot: number) => `₪${shek(agorot).toLocaleString("he-IL")}`;
 export function RealCostPerGuestCard({ state }: { state: AppState }) {
   const [tier, setTier] = useState<CostTier>("mid");
   const [activeBar, setActiveBar] = useState<string | null>(null);
+  // R24 — optional "what-if" guest-count override for modelling
+  // (null = use the real/estimated count).
+  const [guestsOverride, setGuestsOverride] = useState<number | null>(null);
 
   const result = useMemo(
     () => computeRealCostPerGuest(state, tier),
     [state, tier],
   );
 
-  const perGuestShekels = useCountUp(shek(result.total_per_guest), 1100);
+  // Effective guest count + per-guest, honouring the override.
+  const effGuests =
+    guestsOverride && guestsOverride > 0 ? guestsOverride : result.guests_count;
+  const effPerGuest =
+    effGuests > 0 ? Math.round(result.total_event / effGuests) : 0;
+
+  const perGuestShekels = useCountUp(shek(effPerGuest), 1100);
 
   const hasGuests = (state.guests || []).some((g) => g.status !== "declined");
   const noData = !hasGuests && (state.budget?.length ?? 0) === 0;
@@ -124,10 +133,41 @@ export function RealCostPerGuestCard({ state }: { state: AppState }) {
             ₪{perGuestShekels.toLocaleString("he-IL")}
           </div>
           <div className="mt-3 text-sm" style={{ color: "var(--foreground-soft)" }}>
-            כפול <span className="ltr-num font-semibold">{result.guests_count}</span> מוזמנים ={" "}
+            כפול <span className="ltr-num font-semibold">{effGuests}</span> מוזמנים ={" "}
             <span className="ltr-num font-semibold" style={{ color: "var(--accent)" }}>
               {fmt(result.total_event)}
             </span>
+          </div>
+
+          {/* R24 — guest-count what-if override */}
+          <div className="mt-4 inline-flex items-center gap-2 text-xs">
+            <span style={{ color: "var(--foreground-muted)" }}>
+              מה אם יהיו
+            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={guestsOverride ?? ""}
+              placeholder={String(result.guests_count)}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setGuestsOverride(Number.isFinite(n) && n > 0 ? n : null);
+              }}
+              className="w-16 bg-transparent text-center outline-none ltr-num rounded py-1"
+              style={{ color: "var(--foreground)", border: "1px solid var(--border)" }}
+              aria-label="מספר מוזמנים לבדיקה"
+            />
+            <span style={{ color: "var(--foreground-muted)" }}>מוזמנים?</span>
+            {guestsOverride && (
+              <button
+                onClick={() => setGuestsOverride(null)}
+                className="underline"
+                style={{ color: "var(--accent)" }}
+              >
+                איפוס
+              </button>
+            )}
           </div>
         </div>
 

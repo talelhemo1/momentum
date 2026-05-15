@@ -242,6 +242,7 @@ export function AiPackagesCalculator({ state }: { state: AppState }) {
               <PackageCard
                 key={pkg.name}
                 pkg={pkg}
+                guests={guests}
                 active={active === pkg.name}
                 onSelect={() => selectPackage(pkg.name)}
               />
@@ -271,15 +272,34 @@ export function AiPackagesCalculator({ state }: { state: AppState }) {
   );
 }
 
+const BREAKDOWN_LABELS: Record<string, string> = {
+  food: "אוכל",
+  venue: "אולם",
+  music: "מוזיקה",
+  photography: "צילום",
+  decor: "עיצוב",
+  alcohol: "אלכוהול",
+};
+
 function PackageCard({
   pkg,
+  guests,
   active,
   onSelect,
 }: {
   pkg: PackageProposal;
+  guests: number;
   active: boolean;
   onSelect: () => void;
 }) {
+  // R24 — when this package is selected the host can fine-tune the
+  // budget split per category; total + per-guest recompute live.
+  const [edited, setEdited] = useState<Record<string, number> | null>(null);
+  const bd = edited ?? (pkg.breakdown as unknown as Record<string, number>);
+  const editedTotal = Object.values(bd).reduce((a, b) => a + b, 0);
+  const editedPerGuest = guests > 0 ? Math.round(editedTotal / guests) : 0;
+  const isDirty = edited !== null;
+
   return (
     <div
       className="rounded-3xl p-5 flex flex-col transition hover:translate-y-[-2px]"
@@ -301,10 +321,11 @@ function PackageCard({
           className="mt-3 font-extrabold gradient-gold ltr-num leading-none"
           style={{ fontSize: "clamp(34px, 7vw, 46px)" }}
         >
-          {fmt(pkg.per_guest)}
+          {fmt(editedPerGuest)}
         </div>
         <div className="text-xs mt-1" style={{ color: "var(--foreground-muted)" }}>
-          לאורח · סה״כ {fmt(pkg.total)}
+          לאורח · סה״כ {fmt(editedTotal)}
+          {isDirty && <span style={{ color: "var(--accent)" }}> · מותאם</span>}
         </div>
       </div>
 
@@ -329,6 +350,55 @@ function PackageCard({
           ))}
         </div>
       </div>
+
+      {/* R24 — editable budget split (only on the selected package) */}
+      {active && (
+        <div
+          className="mt-4 rounded-2xl p-3 space-y-1.5"
+          style={{ background: "var(--input-bg)", border: "1px solid var(--border)" }}
+        >
+          <div className="flex items-center justify-between text-[11px] mb-1">
+            <span style={{ color: "var(--foreground-soft)" }}>
+              כוונון פילוח התקציב
+            </span>
+            {isDirty && (
+              <button
+                onClick={() => setEdited(null)}
+                className="underline"
+                style={{ color: "var(--accent)" }}
+              >
+                איפוס
+              </button>
+            )}
+          </div>
+          {Object.keys(pkg.breakdown).map((k) => (
+            <div key={k} className="flex items-center justify-between gap-2 text-xs">
+              <span style={{ color: "var(--foreground-soft)" }}>
+                {BREAKDOWN_LABELS[k] ?? k}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span style={{ color: "var(--foreground-muted)" }}>₪</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={bd[k]}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    setEdited({
+                      ...bd,
+                      [k]: Number.isFinite(n) && n >= 0 ? n : 0,
+                    });
+                  }}
+                  className="w-20 bg-transparent text-center outline-none ltr-num rounded py-0.5"
+                  style={{ color: "var(--foreground)", border: "1px solid var(--border)" }}
+                  aria-label={BREAKDOWN_LABELS[k] ?? k}
+                />
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="mt-4 space-y-1.5">
         {pkg.pros.map((p, i) => (

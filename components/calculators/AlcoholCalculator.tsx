@@ -19,7 +19,7 @@ import {
 } from "@/lib/alcoholCalculator";
 import {
   BOTTLE_CATALOG,
-  catalogByCategory,
+  catalogByBrand,
   summarizeSelection,
   DRINK_CATEGORY_LABELS,
   type DrinkCategory,
@@ -124,7 +124,7 @@ export function AlcoholCalculator() {
   // R23 — explicit per-bottle selection (catalog + custom + manual edit).
   const [bottleSelection, setBottleSelection] = useState<SelectedBottle[]>([]);
   const [useBottleSelection, setUseBottleSelection] = useState(false);
-  const [bottlesOpen, setBottlesOpen] = useState(false);
+  const [bottlesOpen, setBottlesOpen] = useState(true);
 
   const [seeded, setSeeded] = useState(false);
 
@@ -677,9 +677,10 @@ export function AlcoholCalculator() {
           aria-expanded={bottlesOpen}
         >
           <div>
-            <div className="font-bold text-sm">🍾 בחירת בקבוקים ספציפית</div>
+            <div className="font-bold text-sm">🍾 בחירת בקבוקים לפי חברה</div>
             <div className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
-              בחר בקבוקים מקטלוג, ערוך כמות ומחיר ידנית — ותראה כיסוי מול הצורך.
+              בחר מותגים ספציפיים (גולדסטאר, אבסולוט, ברקן…), ערוך כמות ומחיר
+              ידנית — ותראה כיסוי מול הצורך.
             </div>
           </div>
           <ChevronDown
@@ -807,27 +808,45 @@ export function AlcoholCalculator() {
                       </div>
                     )}
 
-                    {/* catalog picker */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {catalogByCategory(cat)
-                        .filter(
+                    {/* catalog picker — grouped by brand/company */}
+                    <div className="space-y-2.5">
+                      <div className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>
+                        בחר לפי חברה:
+                      </div>
+                      {catalogByBrand(cat).map((group) => {
+                        const avail = group.bottles.filter(
                           (b) => !bottleSelection.some((s) => s.id === b.id),
-                        )
-                        .map((b) => (
-                          <button
-                            key={b.id}
-                            onClick={() => addBottleToSelection(b.id)}
-                            className="text-[11px] px-2.5 py-1.5 rounded-full inline-flex items-center gap-1 transition hover:translate-y-[-1px]"
-                            style={{
-                              background: "var(--surface-2)",
-                              border: "1px solid var(--border)",
-                              color: "var(--foreground-soft)",
-                            }}
-                          >
-                            <Plus size={11} />
-                            {b.name} · ₪{b.price}
-                          </button>
-                        ))}
+                        );
+                        if (avail.length === 0) return null;
+                        return (
+                          <div key={group.brand}>
+                            <div
+                              className="text-[11px] font-bold mb-1"
+                              style={{ color: "var(--foreground-soft)" }}
+                            >
+                              {group.brand}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {avail.map((b) => (
+                                <button
+                                  key={b.id}
+                                  onClick={() => addBottleToSelection(b.id)}
+                                  className="text-[11px] px-2.5 py-1.5 rounded-full inline-flex items-center gap-1 transition hover:translate-y-[-1px]"
+                                  style={{
+                                    background: "var(--surface-2)",
+                                    border: "1px solid var(--border)",
+                                    color: "var(--foreground-soft)",
+                                  }}
+                                  title={`${b.name} · ${b.unit}`}
+                                >
+                                  <Plus size={11} />
+                                  {b.name} · ₪{b.price}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                       <button
                         onClick={() => addCustomBottle(cat)}
                         className="text-[11px] px-2.5 py-1.5 rounded-full inline-flex items-center gap-1"
@@ -837,7 +856,7 @@ export function AlcoholCalculator() {
                           color: "var(--accent)",
                         }}
                       >
-                        <Plus size={11} /> בקבוק משלי
+                        <Plus size={11} /> בקבוק / חברה משלי
                       </button>
                     </div>
 
