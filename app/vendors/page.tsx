@@ -226,6 +226,11 @@ function VendorsInner() {
 
   const visible = useMemo(() => filtered.slice(0, page * PAGE_SIZE), [filtered, page]);
 
+  // R20 — O(1) membership instead of Array.includes() per card per render.
+  // With a long catalog this was O(n·m) on every render of the grid.
+  const selectedIds = useMemo(() => new Set(state.selectedVendors), [state.selectedVendors]);
+  const compareIds = useMemo(() => new Set(state.compareVendors), [state.compareVendors]);
+
   const countByType = useMemo(() => {
     const m: Partial<Record<VendorType, number>> = {};
     for (const v of VENDORS) {
@@ -444,10 +449,10 @@ function VendorsInner() {
                       <VendorCard
                         vendor={vendor}
                         meshIndex={i}
-                        selected={state.selectedVendors.includes(vendor.id)}
-                        inCompare={state.compareVendors.includes(vendor.id)}
+                        selected={selectedIds.has(vendor.id)}
+                        inCompare={compareIds.has(vendor.id)}
                         compareDisabled={
-                          !state.compareVendors.includes(vendor.id) && state.compareVendors.length >= 3
+                          !compareIds.has(vendor.id) && compareIds.size >= 3
                         }
                         onChat={handleChat}
                         onOpenQuickLook={openQuickLook}

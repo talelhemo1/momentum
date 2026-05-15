@@ -19,6 +19,7 @@ import {
   Globe,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { actions, useAppState } from "@/lib/store";
 import { vendorImageFor } from "@/lib/images";
 import { safeHttpUrl } from "@/lib/safeUrl";
@@ -266,15 +267,16 @@ export function VendorQuickLook({ vendor, onClose, onChat, onPick }: VendorQuick
       >
         {/* Gallery */}
         <div className="relative aspect-[16/9] overflow-hidden" {...swipeHandlers}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          {/* R20 — next/image. priority (was loading="eager") keeps the
+              hero gallery image painting immediately; fill = same layout. */}
+          <Image
             key={imgIdx}
             src={galleryImages[imgIdx]}
             alt={`${vendor.name} — תמונה ${imgIdx + 1}`}
-            loading="eager"
-            decoding="async"
-            width={1200}
-            height={675}
+            fill
+            priority
+            sizes="(max-width: 768px) 100vw, 50vw"
+            quality={70}
             className="absolute inset-0 w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent pointer-events-none" />
@@ -624,14 +626,13 @@ export function VendorQuickLook({ vendor, onClose, onChat, onPick }: VendorQuick
                     style={{ border: "1px solid var(--border)", background: "var(--input-bg)" }}
                   >
                     <div className="aspect-[16/10] rounded-xl overflow-hidden mb-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+                      {/* R20 — next/image (fill; visual unchanged). */}
+                      <Image
                         src={vendorImageFor(s.type, i + 4)}
                         alt={s.name}
-                        loading="lazy"
-                        decoding="async"
-                        width={400}
-                        height={250}
+                        fill
+                        sizes="(max-width: 768px) 50vw, 25vw"
+                        quality={70}
                         className="w-full h-full object-cover"
                       />
                     </div>

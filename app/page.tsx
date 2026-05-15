@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   Sparkles,
   CheckCircle2,
@@ -503,7 +504,18 @@ function InspirationGallery() {
                   : "";
             return (
               <div key={i} className={`gallery-card ${span} aspect-square ${img.span === "tall" ? "md:aspect-[3/4]" : ""} ${img.span === "wide" ? "md:aspect-[2/1]" : ""}`}>
-                <img src={img.src} alt={img.label} loading="lazy" />
+                {/* R20 — next/image. .gallery-card img CSS (100%/cover)
+                    keeps the visual identical; first 2 get priority so the
+                    above-the-fold gallery paints fast. */}
+                <Image
+                  src={img.src}
+                  alt={img.label}
+                  width={400}
+                  height={400}
+                  sizes="(max-width: 768px) 50vw, 25vw"
+                  quality={70}
+                  priority={i < 2}
+                />
                 <div className="caption">{img.label}</div>
               </div>
             );

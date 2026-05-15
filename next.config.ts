@@ -47,6 +47,22 @@ const nextConfig: NextConfig = {
   // Don't advertise that we run Next.js (small recon hardening).
   poweredByHeader: false,
 
+  // R20 — enable next/image optimization for our Unsplash-backed
+  // catalog/gallery imagery. Scoped tightly to the exact host so it
+  // can't be abused as an open image proxy. User-uploaded vendor media
+  // (Supabase storage / arbitrary domains) intentionally stays on plain
+  // <img> — see docs/tasklists/TASKLIST.R20.md.
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+        port: "",
+        pathname: "/**",
+      },
+    ],
+  },
+
   // Allow HMR / dev assets to be fetched when the app is reached via a
   // cloudflared tunnel (or any LAN host). Required as of Next.js 16+, which
   // blocks cross-origin dev resources by default.

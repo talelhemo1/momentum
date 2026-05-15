@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { EmptyEventState } from "@/components/EmptyEventState";
@@ -141,7 +142,8 @@ function CompareCard({
   return (
     <div className="card overflow-hidden flex flex-col">
       <div className="aspect-[5/3] relative">
-        <img src={imageUrl} alt={vendor.name} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+        {/* R20 — next/image (fill keeps the absolute-cover layout identical). */}
+        <Image src={imageUrl} alt={vendor.name} fill sizes="(max-width: 768px) 100vw, 33vw" quality={70} className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
         {vendor.inCatalog && (
           <span className="absolute top-3 start-3 pill pill-gold">

@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * Thin gold scroll progress bar — fixed top of the viewport. Hidden on
@@ -17,7 +17,11 @@ const HIDDEN_PREFIXES = ["/signup", "/rsvp", "/live", "/privacy", "/terms", "/au
 
 export function ScrollProgress() {
   const pathname = usePathname() ?? "/";
-  const [scaleX, setScaleX] = useState(0);
+  // R20 — write the transform straight to the DOM node inside the rAF
+  // callback. The old version called setState on every scroll frame,
+  // which re-rendered this component (and its subtree) ~60×/sec while
+  // scrolling. A ref + direct style write does zero React work.
+  const innerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let raf = 0;
@@ -25,7 +29,9 @@ export function ScrollProgress() {
       const doc = document.documentElement;
       const max = (doc.scrollHeight - doc.clientHeight) || 1;
       const pct = Math.min(1, Math.max(0, doc.scrollTop / max));
-      setScaleX(pct);
+      if (innerRef.current) {
+        innerRef.current.style.transform = `scaleX(${pct})`;
+      }
       raf = 0;
     };
     const onScroll = () => {
@@ -57,11 +63,12 @@ export function ScrollProgress() {
       }}
     >
       <div
+        ref={innerRef}
         style={{
           height: "100%",
           width: "100%",
           transformOrigin: "right center", // RTL: progress fills right→left
-          transform: `scaleX(${scaleX})`,
+          transform: "scaleX(0)",
           background: "linear-gradient(90deg, var(--gold-100) 0%, var(--gold-300) 50%, var(--gold-500) 100%)",
           transition: "transform 80ms linear",
         }}

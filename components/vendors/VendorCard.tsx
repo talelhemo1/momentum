@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useState } from "react";
+import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 
 // Module-scope counter — guarantees uniqueness even when two floaters
@@ -137,14 +138,14 @@ function VendorCardImpl({
       onKeyDown={handleCardKey}
     >
       <div className={`aspect-[16/10] relative ${meshClass} overflow-hidden`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        {/* R20 — next/image (same visual: fill + object-cover + the
+            existing hover-scale / ken-burns classes are preserved). */}
+        <Image
           src={imageUrl}
           alt={vendor.name}
-          loading="lazy"
-          decoding="async"
-          width={800}
-          height={500}
+          fill
+          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          quality={70}
           className={`absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out hover:scale-105 ${
             kenBurns ? "ken-burns" : ""
           }`}

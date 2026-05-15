@@ -4,6 +4,24 @@
 
 ---
 
+## [R20] — 2026-05-16 — שיפורי ביצועים שלב 1 (ללא שינוי ויזואלי)
+
+**אופטימיזציות פנימיות בלבד — אפס שינוי בעיצוב, blur, orbs או אנימציות.**
+כל הבדיקות ירוקות (`tsc` / `lint` / `build`, 43 ראוטים).
+
+### תמונות → next/image
+- `next.config.ts` — נוסף `remotePatterns` ל-`images.unsplash.com` (היקף מצומצם, לא פרוקסי פתוח).
+- הומרו ל-`next/image` כל התמונות מבוססות-Unsplash: כרטיס ספק, גלריית ההשראה (8, עם `priority` ל-2 הראשונות), עמוד ההשוואה, ו-VendorQuickLook (×2). תיראה זהה — נטענת חכם (srcset/WebP/lazy).
+- תמונות שהושארו ב-`<img>` במכוון: העלאות משתמש (Supabase storage / דומיינים לא-מנוהלים), ו-`data:`/`blob:` — המרה הייתה שוברת אותן או דורשת פרוקסי פתוח. מתועד ב-`docs/tasklists/TASKLIST.R20.md`.
+
+### עמוד ספקים — O(1) במקום O(n)
+- `selectedIds` / `compareIds` כ-`Set` ממואיזד; הכרטיסים משתמשים ב-`.has()` במקום `Array.includes()` לכל כרטיס בכל רינדור.
+
+### ScrollProgress — בלי setState בכל frame
+- הוחלף `useState` ב-`ref`; ה-transform נכתב ישירות ל-DOM בתוך ה-rAF. אפס רינדורים מחדש בזמן גלילה. הוויזואל זהה.
+
+---
+
 ## [R18] — 2026-05-16 — ליטוש חוויית משתמש (Phone OTP, Empty states, Wizards, Polish)
 
 **19 תיקונים על פני 4 בלוקים.** כל בלוק עבר `tsc --noEmit`, `npm run lint`, `npm run build` בנפרד (43 ראוטים).
