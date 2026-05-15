@@ -37,6 +37,17 @@ friendly expired card; the OG image renders its default fallback.
 3. OG image for a fake token → renders the default "הזמנה לאירוע
    יוקרתי" fallback, no 500.
 
+## 🅕 OG font resilience (follow-up in same R29)
+
+| File | Change |
+|---|---|
+| `app/i/[token]/opengraph-image.tsx` | `readFile` of the two Heebo TTFs wrapped in `try/catch`. On failure `fonts` is `undefined` and `ImageResponse` is built **without** the `fonts` option → returns a valid 200 image (next/og built-in font) instead of a 500 that would break the WhatsApp preview. |
+| `next.config.ts` | Added `outputFileTracingIncludes: { "/**": ["./assets/**/*"] }` so Vercel actually bundles `assets/Heebo-*.ttf` into the OG serverless function (without this the catch above would silently render Hebrew as boxes). ~33KB, broad glob for matching-safety. |
+
+Manual check 3 (updated): OG for any token renders an image even if the
+font assets are missing from the bundle (no 500); with tracing in place
+Hebrew renders correctly.
+
 ## Notes
 
 - No schema change (R28's `short_links` migration already applied).

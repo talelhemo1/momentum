@@ -39,17 +39,31 @@ export default async function Image({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const [hebrew, latin] = await Promise.all([
-    readFile(join(process.cwd(), "assets/Heebo-Bold.ttf")),
-    readFile(join(process.cwd(), "assets/Heebo-Latin.ttf")),
-  ]);
-  const fonts = [
-    { name: "Heebo", data: hebrew, weight: 700 as const, style: "normal" as const },
-    { name: "Heebo", data: latin, weight: 700 as const, style: "normal" as const },
-  ];
+
+  // R29 — font loading must NEVER crash the OG route. If the bundled
+  // TTFs can't be read (asset not traced into the serverless fn, etc.)
+  // we still return a valid image — without the `fonts` option next/og
+  // uses its built-in font (Latin renders; Hebrew may box, but a 200
+  // image beats a 500 that breaks the WhatsApp preview entirely).
+  let fonts:
+    | Array<{ name: string; data: Buffer; weight: 700; style: "normal" }>
+    | undefined;
+  try {
+    const [hebrew, latin] = await Promise.all([
+      readFile(join(process.cwd(), "assets/Heebo-Bold.ttf")),
+      readFile(join(process.cwd(), "assets/Heebo-Latin.ttf")),
+    ]);
+    fonts = [
+      { name: "Heebo", data: hebrew, weight: 700, style: "normal" },
+      { name: "Heebo", data: latin, weight: 700, style: "normal" },
+    ];
+  } catch (e) {
+    console.error("[og] font load failed — rendering without custom font", e);
+    fonts = undefined;
+  }
   const opts = {
     ...size,
-    fonts,
+    ...(fonts ? { fonts } : {}),
     headers: {
       "cache-control": "public, max-age=3600, s-maxage=86400",
     },

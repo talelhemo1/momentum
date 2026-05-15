@@ -10,7 +10,10 @@
 עכשיו `generateMetadata` (עם `.catch`), `lookupShortLink`, `createShortLink`
 ו-`lookupEventByToken` עטופים כולם ב-try/catch — אפס שגיאות יוצאות מנתיב
 ה-OG/שרת, וזרם ההזמנה נופל בחן לקישור הארוך. ללא שינוי סכימה/התנהגות בנתיב התקין.
-tsc + lint (0 errors) + build (46) ירוקים.
+**תוספת 🅕:** טעינת פונטי ה-OG (`assets/Heebo-*.ttf`) עטופה ב-try/catch —
+כשל קריאה מחזיר תמונה ללא פונט מותאם במקום 500; ונוסף
+`outputFileTracingIncludes` ב-next.config כדי שה-TTF ייכללו בפועל ב-bundle של
+פונקציית ה-OG ב-Vercel (כך שעברית תרונדר). tsc + lint (0 errors) + build (46) ירוקים.
 
 ---
 

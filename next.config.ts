@@ -47,6 +47,16 @@ const nextConfig: NextConfig = {
   // Don't advertise that we run Next.js (small recon hardening).
   poweredByHeader: false,
 
+  // R29 — guarantee the Hebrew OG fonts (assets/Heebo-*.ttf, ~33KB) are
+  // traced into the serverless bundle for the /i/[token]/opengraph-image
+  // route. Without this Vercel may omit them → readFile throws (now
+  // caught, but then Hebrew renders as boxes). Broad route glob keeps it
+  // correct regardless of how the metadata route path is matched; the
+  // payload is tiny so the over-inclusion cost is negligible.
+  outputFileTracingIncludes: {
+    "/**": ["./assets/**/*"],
+  },
+
   // R20 — enable next/image optimization for our Unsplash-backed
   // catalog/gallery imagery. Scoped tightly to the exact host so it
   // can't be abused as an open image proxy. User-uploaded vendor media
