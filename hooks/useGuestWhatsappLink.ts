@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { buildHostInvitationWhatsappLink } from "@/lib/invitation";
+import { createShortLink } from "@/lib/shortLinks";
+import { buildWhatsappInviteMessage } from "@/lib/invitationMessage";
+import { normalizeIsraeliPhone } from "@/lib/phone";
 import type { EventInfo, Guest } from "@/lib/types";
 
 /**
@@ -59,8 +62,39 @@ async function buildLink(origin: string, event: EventInfo, guest: Guest): Promis
   // tokenOk stays null forever, and the page shows an infinite spinner.
   // The legacy payload-in-URL format embeds event + guest data so /rsvp
   // can render straight from the URL with no local state required.
-  const { url, rsvpUrl } = await buildHostInvitationWhatsappLink(origin, event, guest);
-  return { whatsappUrl: url, rsvpUrl };
+  const legacy = await buildHostInvitationWhatsappLink(origin, event, guest);
+
+  // R28 — upgrade to a short /i/<id> link + polished message + rich OG
+  // preview. ANY failure here falls back to the legacy long URL/message
+  // so the existing flow can never break.
+  try {
+    const rel = legacy.rsvpUrl.startsWith(origin)
+      ? legacy.rsvpUrl.slice(origin.length)
+      : legacy.rsvpUrl;
+    if (!rel.startsWith("/")) throw new Error("unexpected rsvp path");
+
+    const shortId = await createShortLink(rel, event.id);
+    if (!shortId) return { whatsappUrl: legacy.url, rsvpUrl: legacy.rsvpUrl };
+
+    const shortUrl = `${origin}/i/${shortId}`;
+    const message = buildWhatsappInviteMessage({
+      guestName: guest.name,
+      hostName: event.hostName,
+      partnerName: event.partnerName,
+      eventType: event.type,
+      eventDate: event.date,
+      venue: [event.synagogue, event.city].filter(Boolean).join(" · "),
+      shortUrl,
+    });
+    const { phone, valid } = normalizeIsraeliPhone(guest.phone);
+    const encoded = encodeURIComponent(message);
+    const whatsappUrl = valid
+      ? `https://wa.me/${phone}?text=${encoded}`
+      : `https://wa.me/?text=${encoded}`;
+    return { whatsappUrl, rsvpUrl: shortUrl };
+  } catch {
+    return { whatsappUrl: legacy.url, rsvpUrl: legacy.rsvpUrl };
+  }
 }
 
 /**
