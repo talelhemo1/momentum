@@ -1,38 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
-import type { AppState, GuestArrival, ManagerAction } from "@/lib/types";
-import {
-  buildEventReport,
-  exportReportToCSV,
-  type EventReportData,
-} from "@/lib/eventReport";
-import { buildThankYouMessage } from "@/lib/thankYouMessages";
-import {
-  ArrowRight,
-  Loader2,
-  Award,
-  Users,
-  PartyPopper,
-  Download,
-  ChevronDown,
-  ChevronUp,
-  MessageCircle,
-} from "lucide-react";
+import type { AppState } from "@/lib/types";
+import { generateReport, type EventReport } from "@/lib/reportGenerator";
+import { useCountUp } from "@/lib/useCountUp";
+import { Confetti } from "@/components/managerLive/Confetti";
+import { haptic } from "@/lib/haptic";
+import { Loader2, Crown, Share2, ChevronRight, ChevronLeft } from "lucide-react";
 
 /**
- * R20 Phase 6 — post-event report.
- *
- * Auth: open to BOTH the host (event_managers.invited_by) and any accepted
- * manager (event_managers.user_id). Done with .or() so a single round-trip
- * answers either side. Falls back to the dashboard route if neither matches.
- *
- * Data: local AppState provides the guest list, tables, and event title;
- * Supabase provides arrivals + actions. Aggregation lives in lib/eventReport.
+ * R27 — post-event "Wrapped"-style report. Auth (host OR accepted
+ * manager) is preserved from the previous version; the data now comes
+ * from local AppState via generateReport(). The render is a full-screen
+ * auto-advancing slide deck — the peak emotional moment of the app.
  */
 export default function ReportPage() {
   const params = useParams();
@@ -40,9 +24,8 @@ export default function ReportPage() {
   const eventId = typeof params.eventId === "string" ? params.eventId : "";
 
   const [authorized, setAuthorized] = useState(false);
-  const [report, setReport] = useState<EventReportData | null>(null);
+  const [report, setReport] = useState<EventReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<"arrived" | "noshow" | null>(null);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -52,14 +35,14 @@ export default function ReportPage() {
     }
     let cancelled = false;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (cancelled) return;
       if (!user) {
         router.replace(`/manage/${eventId}`);
         return;
       }
-      // Host OR accepted manager — host is whoever sent the manager invite
-      // (event_managers.invited_by = host's user_id).
       const { data: m } = (await supabase
         .from("event_managers")
         .select("id")
@@ -73,36 +56,17 @@ export default function ReportPage() {
       }
       setAuthorized(true);
 
-      // Pull arrivals + actions in parallel.
-      const [arrivalsRes, actionsRes] = await Promise.all([
-        supabase
-          .from("guest_arrivals")
-          .select("id, event_id, guest_id, arrived_at, marked_by, plus_ones, notes")
-          .eq("event_id", eventId),
-        supabase
-          .from("manager_actions")
-          .select("id, event_id, manager_id, action_type, payload, created_at")
-          .eq("event_id", eventId),
-      ]);
-      if (cancelled) return;
-      const arrivals = (arrivalsRes.data ?? []) as GuestArrival[];
-      const actions = (actionsRes.data ?? []) as ManagerAction[];
-
       let state: Partial<AppState> | null = null;
       try {
-        const stateRaw = localStorage.getItem(STORAGE_KEYS.app);
-        if (stateRaw) {
-          const parsed = JSON.parse(stateRaw) as Partial<AppState>;
+        const raw = localStorage.getItem(STORAGE_KEYS.app);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<AppState>;
           if (parsed.event?.id === eventId) state = parsed;
         }
-      } catch (e) {
-        console.error("[manage/report] failed to read local state", e);
+      } catch {
+        /* malformed local state — handled by the no-report branch */
       }
-
-      const built = state
-        ? buildEventReport({ state, arrivals, actions })
-        : null;
-      setReport(built);
+      setReport(state ? generateReport(state as AppState) : null);
       setLoading(false);
     })();
     return () => {
@@ -112,7 +76,7 @@ export default function ReportPage() {
 
   if (!authorized || loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
+      <main className="min-h-screen flex items-center justify-center" style={{ background: "#0B0A08" }}>
         <Loader2 className="animate-spin text-[--accent]" size={32} aria-hidden />
       </main>
     );
@@ -120,7 +84,7 @@ export default function ReportPage() {
 
   if (!report) {
     return (
-      <main className="min-h-screen flex items-center justify-center px-5">
+      <main className="min-h-screen flex items-center justify-center px-5" style={{ background: "#0B0A08" }}>
         <div className="card p-8 text-center max-w-md">
           <p className="font-semibold">לא נטענו פרטי האירוע במכשיר הזה</p>
           <p className="mt-2 text-xs" style={{ color: "var(--foreground-soft)" }}>
@@ -138,327 +102,365 @@ export default function ReportPage() {
     );
   }
 
-  const downloadCSV = () => {
-    const csv = exportReportToCSV(report);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `momentum-report-${report.eventId}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+  return <WrappedDeck report={report} backHref={`/manage/${eventId}`} />;
+}
 
-  const subjects = report.partnerName
-    ? `${report.hostName} ו-${report.partnerName}`
-    : report.hostName;
+// ─────────────────────────── Wrapped deck ───────────────────────────
+
+function WrappedDeck({
+  report,
+  backHref,
+}: {
+  report: EventReport;
+  backHref: string;
+}) {
+  const slides = buildSlides(report);
+  const [i, setI] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const isLast = i === slides.length - 1;
+
+  // Auto-advance every 5s (stops on the last slide / when paused).
+  useEffect(() => {
+    if (paused || isLast) return;
+    const t = window.setTimeout(() => setI((n) => Math.min(slides.length - 1, n + 1)), 5000);
+    return () => window.clearTimeout(t);
+  }, [i, paused, isLast, slides.length]);
+
+  useEffect(() => {
+    haptic.light();
+  }, [i]);
+
+  const go = (dir: 1 | -1) =>
+    setI((n) => Math.max(0, Math.min(slides.length - 1, n + dir)));
 
   return (
-    <main className="min-h-screen pb-20">
-      <header
-        className="sticky top-0 z-40 backdrop-blur-md border-b"
-        style={{ background: "rgba(20,16,12,0.92)", borderColor: "var(--border)" }}
+    <main
+      className="fixed inset-0 z-[70] overflow-hidden select-none"
+      style={{
+        background:
+          "radial-gradient(120% 90% at 50% 0%, #2A2012, #0B0A08 70%)",
+      }}
+    >
+      {isLast && <Confetti count={70} />}
+
+      {/* Progress dots */}
+      <div
+        className="absolute inset-x-0 top-0 z-20 flex gap-1.5 px-4"
+        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
-        <div className="max-w-3xl mx-auto px-5 py-3 flex items-center gap-3">
-          <Link
-            href={`/manage/${eventId}`}
-            aria-label="חזרה לדשבורד"
-            className="p-2 rounded-lg hover:bg-white/5"
-          >
-            <ArrowRight size={20} aria-hidden />
-          </Link>
-          <div className="flex-1 min-w-0">
-            <div
-              className="text-[10px] uppercase tracking-wider"
-              style={{ color: "var(--foreground-muted)" }}
-            >
-              דוח האירוע
-            </div>
-            <div className="font-bold text-sm truncate">{subjects}</div>
-          </div>
-          <button
-            type="button"
-            onClick={downloadCSV}
-            className="btn-gold inline-flex items-center gap-1.5 text-xs px-3 py-1.5"
-          >
-            <Download size={14} aria-hidden /> CSV
-          </button>
-        </div>
-      </header>
-
-      <div className="max-w-3xl mx-auto px-5 pt-6 space-y-6">
-        <section className="card-gold p-8 text-center relative overflow-hidden">
+        {slides.map((_, idx) => (
           <div
-            aria-hidden
-            className="absolute -top-20 -end-20 w-56 h-56 rounded-full blur-3xl"
-            style={{ background: "radial-gradient(circle, rgba(212,176,104,0.30), transparent 70%)" }}
-          />
-          <div className="relative">
-            <PartyPopper size={36} className="mx-auto text-[--accent]" aria-hidden />
-            <h1 className="mt-4 text-3xl font-extrabold gradient-gold">
-              איזה ערב היה!
-            </h1>
-            <p
-              className="mt-2 text-sm"
-              style={{ color: "var(--foreground-soft)" }}
-            >
-              {subjects}
-              {report.eventDate &&
-                ` — ${(() => {
-                  const d = new Date(report.eventDate);
-                  return Number.isNaN(d.getTime())
-                    ? report.eventDate
-                    : d.toLocaleDateString("he-IL", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      });
-                })()}`}
-            </p>
+            key={idx}
+            className="flex-1 h-1 rounded-full overflow-hidden"
+            style={{ background: "rgba(255,255,255,0.18)" }}
+          >
+            <div
+              className="h-full rounded-full"
+              style={{
+                background: "linear-gradient(90deg,#F4DEA9,#A8884A)",
+                width: idx < i ? "100%" : idx === i ? "100%" : "0%",
+                transition: idx === i ? "width 5s linear" : "none",
+              }}
+            />
           </div>
-        </section>
+        ))}
+      </div>
 
-        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatBox
-            label="הגיעו"
-            value={report.totalArrived}
-            sub={`מתוך ${report.totalGuests}`}
-            color="emerald"
-          />
-          <StatBox
-            label="אחוז הגעה"
-            value={`${Math.round(report.arrivalRate)}%`}
-            color="gold"
-          />
-          <StatBox
-            label="+1 נוספים"
-            value={report.totalPlusOnes}
-            color="amber"
-          />
-          <StatBox
-            label="פעולות ספקים"
-            value={report.totalActions}
-            color="gold"
-          />
-        </section>
+      {/* Tap zones: right→prev, left→next (RTL) */}
+      <button
+        aria-label="הקודם"
+        className="absolute inset-y-0 right-0 w-1/3 z-10"
+        onClick={() => go(-1)}
+      />
+      <button
+        aria-label="הבא"
+        className="absolute inset-y-0 left-0 w-1/3 z-10"
+        onClick={() => go(1)}
+      />
 
-        {report.topTables.length > 0 && (
-          <section>
-            <h2 className="font-bold text-lg mb-3 flex items-center gap-2">
-              <Award size={20} className="text-[--accent]" aria-hidden />
-              5 השולחנות המובילים
-            </h2>
-            <div className="space-y-2">
-              {report.topTables.map((t, i) => (
-                <div
-                  key={t.tableId}
-                  className="card p-4 flex items-center gap-3"
-                >
-                  <div className="text-2xl font-extrabold gradient-gold ltr-num w-8 text-center shrink-0">
-                    {i + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold truncate">{t.label}</div>
-                    <div
-                      className="text-xs ltr-num"
-                      style={{ color: "var(--foreground-muted)" }}
-                    >
-                      {t.arrivedCount} / {t.expectedCount} אורחים
-                    </div>
-                  </div>
-                  <div className="text-sm font-bold text-emerald-400 ltr-num">
-                    {Math.round(t.fillPercent)}%
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+      <button
+        onClick={() => setPaused((p) => !p)}
+        className="absolute top-4 left-4 z-20 text-xs px-2.5 py-1 rounded-full"
+        style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", marginTop: "env(safe-area-inset-top)" }}
+      >
+        {paused ? "▶︎" : "❚❚"}
+      </button>
+
+      {/* Slide */}
+      <div key={i} className="absolute inset-0 flex items-center justify-center px-8 text-center r26-rise">
+        {slides[i].node}
+      </div>
+
+      {/* Bottom controls */}
+      <div
+        className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-between px-5"
+        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+      >
+        <button
+          onClick={() => go(-1)}
+          disabled={i === 0}
+          className="w-11 h-11 rounded-full flex items-center justify-center disabled:opacity-30"
+          style={{ background: "rgba(255,255,255,0.07)", color: "#fff" }}
+          aria-label="הקודם"
+        >
+          <ChevronRight size={20} />
+        </button>
+
+        {isLast ? (
+          <ShareButton report={report} />
+        ) : (
+          <Link
+            href={backHref}
+            className="text-xs"
+            style={{ color: "rgba(255,255,255,0.4)" }}
+          >
+            דלג
+          </Link>
         )}
 
-        {report.actions.length > 0 && (
-          <section>
-            <h2 className="font-bold text-lg mb-3">פעולות ספקים</h2>
-            <div className="space-y-2">
-              {report.actions.map((a) => (
-                <div
-                  key={a.actionType}
-                  className="card p-3 flex items-center justify-between"
-                >
-                  <div className="font-semibold text-sm truncate">{a.label}</div>
-                  <div className="text-sm font-bold text-[--accent] ltr-num">
-                    {a.count}×
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        <section>
-          <h2 className="font-bold text-lg mb-3 flex items-center gap-2">
-            <Users size={20} className="text-[--accent]" aria-hidden />
-            תודה אישית לכל אורח
-          </h2>
-
-          <ExpandableGuestList
-            title={`${report.arrivedGuests.length} שהגיעו`}
-            expanded={expanded === "arrived"}
-            onToggle={() =>
-              setExpanded((e) => (e === "arrived" ? null : "arrived"))
-            }
-            tone="emerald"
-            guests={report.arrivedGuests}
-            hostName={report.hostName}
-            partnerName={report.partnerName}
-            variant="attended"
-          />
-
-          <div className="mt-3" />
-
-          <ExpandableGuestList
-            title={`${report.noShowGuests.length} שלא הגיעו`}
-            expanded={expanded === "noshow"}
-            onToggle={() =>
-              setExpanded((e) => (e === "noshow" ? null : "noshow"))
-            }
-            tone="amber"
-            guests={report.noShowGuests}
-            hostName={report.hostName}
-            partnerName={report.partnerName}
-            variant="noshow"
-          />
-        </section>
+        <button
+          onClick={() => go(1)}
+          disabled={isLast}
+          className="w-11 h-11 rounded-full flex items-center justify-center disabled:opacity-30"
+          style={{ background: "rgba(255,255,255,0.07)", color: "#fff" }}
+          aria-label="הבא"
+        >
+          <ChevronLeft size={20} />
+        </button>
       </div>
     </main>
   );
 }
 
-function StatBox({
-  label,
-  value,
-  sub,
-  color,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  color: "emerald" | "amber" | "gold";
-}) {
-  const colorMap = {
-    emerald: "text-emerald-400",
-    amber: "text-amber-400",
-    gold: "gradient-gold",
-  };
+function Big({ children }: { children: React.ReactNode }) {
   return (
-    <div className="card p-4 text-center">
-      <div className={`text-3xl font-extrabold ltr-num ${colorMap[color]}`}>
-        {value}
-      </div>
-      <div className="text-xs mt-1" style={{ color: "var(--foreground-muted)" }}>
-        {label}
-      </div>
-      {sub && (
-        <div className="text-[10px] mt-0.5" style={{ color: "var(--foreground-soft)" }}>
-          {sub}
-        </div>
-      )}
+    <div
+      className="font-extrabold gradient-gold leading-none"
+      style={{ fontSize: "clamp(56px, 20vw, 120px)" }}
+    >
+      {children}
+    </div>
+  );
+}
+function Cap({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mt-5 text-lg md:text-xl" style={{ color: "rgba(255,255,255,0.8)" }}>
+      {children}
+    </p>
+  );
+}
+
+function CountSlide({ value, suffix, caption }: { value: number; suffix?: string; caption: string }) {
+  const n = useCountUp(value, 1600);
+  return (
+    <div>
+      <Big>
+        {n.toLocaleString("he-IL")}
+        {suffix}
+      </Big>
+      <Cap>{caption}</Cap>
     </div>
   );
 }
 
-function ExpandableGuestList({
-  title,
-  expanded,
-  onToggle,
-  tone,
-  guests,
-  hostName,
-  partnerName,
-  variant,
-}: {
-  title: string;
-  expanded: boolean;
-  onToggle: () => void;
-  tone: "emerald" | "amber";
-  guests: { guestId: string; name: string; phone: string; plusOnes: number; tableLabel?: string }[];
-  hostName: string;
-  partnerName?: string;
-  variant: "attended" | "noshow";
-}) {
-  const toneClass = tone === "emerald" ? "text-emerald-300" : "text-amber-300";
-  return (
-    <div className="card overflow-hidden">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full p-4 flex items-center justify-between text-start"
-      >
-        <div className={`font-bold ${toneClass}`}>{title}</div>
-        {expanded ? (
-          <ChevronUp size={18} aria-hidden />
-        ) : (
-          <ChevronDown size={18} aria-hidden />
-        )}
-      </button>
-      {expanded && (
-        <div className="border-t" style={{ borderColor: "var(--border)" }}>
-          {guests.length === 0 ? (
-            <div
-              className="p-4 text-center text-sm"
-              style={{ color: "var(--foreground-muted)" }}
-            >
-              אין אורחים בקטגוריה זו
-            </div>
-          ) : (
-            <ul>
-              {guests.map((g) => {
-                const { url, valid } = buildThankYouMessage({
-                  guestName: g.name,
-                  guestPhone: g.phone,
-                  hostName,
-                  partnerName,
-                  attended: variant === "attended",
-                  plusOnes: g.plusOnes,
-                });
-                return (
-                  <li
-                    key={g.guestId}
-                    className="px-4 py-3 flex items-center justify-between border-t"
-                    style={{ borderColor: "var(--border)" }}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm truncate">{g.name}</div>
-                      {g.tableLabel && (
-                        <div
-                          className="text-xs"
-                          style={{ color: "var(--foreground-muted)" }}
-                        >
-                          {g.tableLabel}
-                        </div>
-                      )}
-                    </div>
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${
-                        valid
-                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
-                          : "bg-white/5 text-white/60 border-white/10"
-                      } transition`}
-                      aria-label={`שלח תודה ל-${g.name}`}
-                    >
-                      <MessageCircle size={12} aria-hidden /> תודה
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+function buildSlides(r: EventReport): Array<{ node: React.ReactNode }> {
+  const slides: Array<{ node: React.ReactNode }> = [];
+
+  slides.push({
+    node: (
+      <div>
+        <div className="r26-crown inline-block">
+          <div className="r26-crown-inner">
+            <Crown size={72} className="text-[--accent]" aria-hidden />
+          </div>
         </div>
-      )}
-    </div>
+        <h1 className="mt-8 text-3xl md:text-4xl font-extrabold gradient-gold">
+          {r.hostNames}
+        </h1>
+        <Cap>הסיכום של האירוע שלכם ✨</Cap>
+      </div>
+    ),
+  });
+
+  slides.push({
+    node: <CountSlide value={r.durationHours} caption="שעות של חגיגה בלתי נשכחת" />,
+  });
+
+  slides.push({
+    node: (
+      <CountSlide
+        value={r.totalArrivals}
+        caption={`מוזמנים חגגו איתכם — ${Math.round(r.arrivalRate * 100)}% הגעה`}
+      />
+    ),
+  });
+
+  slides.push({
+    node: (
+      <div>
+        <div className="text-6xl">🕺💃</div>
+        <Cap>רחבת הריקודים לא נחה לרגע</Cap>
+        <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
+          הרגע שכולם חיכו לו
+        </p>
+      </div>
+    ),
+  });
+
+  slides.push({
+    node: (
+      <div>
+        <Big>{r.vendorNames.length || "—"}</Big>
+        <Cap>ספקים יצרו את הקסם</Cap>
+        {r.vendorNames.length > 0 && (
+          <div className="mt-6 flex flex-wrap gap-2 justify-center max-w-sm mx-auto">
+            {r.vendorNames.map((v) => (
+              <span
+                key={v}
+                className="text-sm px-3 py-1.5 rounded-full"
+                style={{
+                  background: "rgba(212,176,104,0.14)",
+                  border: "1px solid var(--border-gold)",
+                  color: "var(--accent)",
+                }}
+              >
+                {v}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    ),
+  });
+
+  if (r.envelopeTotal && r.envelopeTotal > 0) {
+    slides.push({
+      node: (
+        <CountSlide
+          value={Math.round(r.envelopeTotal)}
+          suffix="₪"
+          caption="נאספו במעטפות 💌"
+        />
+      ),
+    });
+  }
+
+  slides.push({
+    node: (
+      <CountSlide
+        value={r.memoryNotesCount}
+        caption="רגעים נשמרו ב-Memory Album 📷"
+      />
+    ),
+  });
+
+  slides.push({
+    node: (
+      <div>
+        <div className="text-6xl">💛</div>
+        <h2 className="mt-6 text-2xl md:text-3xl font-extrabold gradient-gold">
+          תודה ש-Momentum היה חלק מהיום שלכם
+        </h2>
+        <Cap>שיתוף הסיכום ⬇︎</Cap>
+      </div>
+    ),
+  });
+
+  return slides;
+}
+
+function ShareButton({ report }: { report: EventReport }) {
+  const busy = useRef(false);
+
+  const share = async () => {
+    if (busy.current) return;
+    busy.current = true;
+    haptic.success();
+    try {
+      const W = 1080;
+      const H = 1920;
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, "#2A2012");
+      g.addColorStop(1, "#0B0A08");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#F4DEA9";
+      ctx.font = "bold 64px sans-serif";
+      ctx.fillText("Momentum", W / 2, 240);
+
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = "bold 80px sans-serif";
+      ctx.fillText(report.hostNames, W / 2, 520);
+
+      ctx.fillStyle = "#E6C887";
+      ctx.font = "bold 180px sans-serif";
+      ctx.fillText(
+        `${report.totalArrivals}`,
+        W / 2,
+        900,
+      );
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.font = "44px sans-serif";
+      ctx.fillText("אורחים חגגו איתנו", W / 2, 1000);
+
+      ctx.font = "52px sans-serif";
+      ctx.fillStyle = "#E6C887";
+      ctx.fillText(
+        `${report.durationHours} שעות · ${Math.round(report.arrivalRate * 100)}% הגעה`,
+        W / 2,
+        1200,
+      );
+
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.font = "40px sans-serif";
+      ctx.fillText("נבנה ב-Momentum 💛", W / 2, 1780);
+
+      const blob: Blob | null = await new Promise((res) =>
+        canvas.toBlob((b) => res(b), "image/png"),
+      );
+      if (!blob) return;
+      const file = new File([blob], "momentum-wrapped.png", {
+        type: "image/png",
+      });
+
+      const navAny = navigator as Navigator & {
+        canShare?: (d: { files: File[] }) => boolean;
+      };
+      if (navAny.canShare?.({ files: [file] }) && navigator.share) {
+        await navigator.share({
+          files: [file],
+          title: "הסיכום שלנו",
+          text: "האירוע שלנו ב-Momentum 💛",
+        });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "momentum-wrapped.png";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch {
+      /* user cancelled the share sheet — no-op */
+    } finally {
+      busy.current = false;
+    }
+  };
+
+  return (
+    <button
+      onClick={share}
+      className="btn-gold inline-flex items-center gap-2 py-3 px-6 text-sm font-bold"
+    >
+      <Share2 size={16} /> שתף את הסיכום
+    </button>
   );
 }

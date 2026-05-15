@@ -129,6 +129,8 @@ export default function ManagerDashboardPage() {
   // managerId is the row ID in event_managers — used for manager_actions FK.
   // marked_by on guest_arrivals takes the user_id directly (per schema).
   const [managerId, setManagerId] = useState<string | null>(null);
+  // R27 — "your Wrapped is ready" prompt, 24h+ after the event, once.
+  const [showReportPrompt, setShowReportPrompt] = useState(false);
 
   // R20 Phase 3 — AI Co-Pilot state. `eventStartedAt` anchors the rule timings
   // (90 min for hora reminder, etc.) to dashboard open time; future versions
@@ -166,6 +168,24 @@ export default function ManagerDashboardPage() {
       cleanupRef.current?.();
     };
   }, []);
+
+  // R27 — once, 24h+ after the event, surface the Wrapped report.
+  useEffect(() => {
+    const iso = data?.event?.date;
+    if (!iso) return;
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return;
+    if (Date.now() - t < 24 * 60 * 60 * 1000) return;
+    const key = `momentum.report.shown.v1.${eventId}`;
+    try {
+      if (window.localStorage.getItem(key) === "1") return;
+      window.localStorage.setItem(key, "1");
+    } catch {
+      /* private mode — still show it this session */
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShowReportPrompt(true);
+  }, [data?.event?.date, eventId]);
 
   const loadData = useCallback(async () => {
     const supabase = getSupabase();
@@ -477,6 +497,40 @@ export default function ManagerDashboardPage() {
 
   return (
     <main className="min-h-screen pb-20" style={{ background: "var(--surface-0)" }}>
+      {/* R27 — Wrapped-ready prompt (24h+ after the event, shown once). */}
+      {showReportPrompt && (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center p-5"
+          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+          onClick={() => setShowReportPrompt(false)}
+        >
+          <div
+            className="card-gold p-7 text-center max-w-sm r26-rise"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-5xl">🎉</div>
+            <h2 className="mt-4 text-xl font-extrabold gradient-gold">
+              הסיכום שלכם מוכן!
+            </h2>
+            <p className="mt-2 text-sm" style={{ color: "var(--foreground-soft)" }}>
+              חוויית &quot;Wrapped&quot; קצרה של האירוע — שווה לראות ולשתף 💛
+            </p>
+            <Link
+              href={`/manage/${eventId}/report`}
+              className="btn-gold w-full mt-6 py-3 inline-flex items-center justify-center"
+            >
+              לצפייה בסיכום
+            </Link>
+            <button
+              onClick={() => setShowReportPrompt(false)}
+              className="mt-3 text-xs"
+              style={{ color: "var(--foreground-muted)" }}
+            >
+              אחר כך
+            </button>
+          </div>
+        </div>
+      )}
       {/* Sticky header with running arrivals counter */}
       <header
         className="sticky top-0 z-40 backdrop-blur-md border-b"

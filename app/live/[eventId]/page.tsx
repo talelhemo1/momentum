@@ -18,14 +18,15 @@
  *    surface a friendly hint when there's no active event in storage.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { actions, useAppState } from "@/lib/store";
 import { Logo } from "@/components/Logo";
 import { RsvpSkeleton } from "@/components/skeletons/PageSkeletons";
 import { showToast } from "@/components/Toast";
 import { trackEvent } from "@/lib/analytics";
+import { getSupabase } from "@/lib/supabase";
 import {
   CalendarDays,
   MapPin,
@@ -37,6 +38,7 @@ import {
   Image as ImageIcon,
   Clock,
   PartyPopper,
+  Upload,
 } from "lucide-react";
 
 interface Slot {
@@ -69,9 +71,24 @@ function deriveMode(eventDate: string | null | undefined, now: number): LiveMode
   return "upcoming";
 }
 
+/**
+ * Next 16 requires components that read useSearchParams() to live inside a
+ * Suspense boundary — otherwise the page bails out of static rendering and
+ * the build complains. The actual UI lives in <LiveEventPageInner />.
+ */
 export default function LiveEventPage() {
+  return (
+    <Suspense fallback={<RsvpSkeleton />}>
+      <LiveEventPageInner />
+    </Suspense>
+  );
+}
+
+function LiveEventPageInner() {
   const params = useParams<{ eventId: string }>();
   const eventId = params?.eventId ?? "";
+  const searchParams = useSearchParams();
+  const isUploadMode = searchParams.get("mode") === "upload";
   const { state, hydrated } = useAppState();
   const [now, setNow] = useState<number>(() => Date.now());
 
@@ -120,6 +137,13 @@ export default function LiveEventPage() {
 
   if (!hydrated) {
     return <RsvpSkeleton />;
+  }
+
+  // Guest upload screen — reached by scanning the in-hall QR
+  // (`/live/<id>?mode=upload`). Guests' localStorage is empty, so this branch
+  // must render WITHOUT depending on `state.event`; it only needs eventId.
+  if (isUploadMode) {
+    return <UploadScreen eventId={eventId} />;
   }
 
   const event = state.event;
@@ -567,9 +591,352 @@ function readAsDataUrl(file: File): Promise<string> {
   });
 }
 
+// ─────────────────────────────────── Guest upload (?mode=upload) ───────────────────────────────────
+
+/**
+ * Client-side image compression. We decode the picked file into an
+ * HTMLImageElement, draw it onto a canvas scaled so the longest side is
+ * ≤ MAX_EDGE px, then re-encode as JPEG q=0.72. This turns a 4-12MB phone
+ * photo into ~150-400KB — uploads stay fast on hall wifi and the kiosk feed
+ * stays snappy. Decoding from a blob URL (not a data URL) keeps memory low
+ * on older phones; we revoke the URL once decoded.
+ */
+const MAX_EDGE = 1280;
+
+function compressImage(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const { width, height } = img;
+      const longest = Math.max(width, height);
+      const scale = longest > MAX_EDGE ? MAX_EDGE / longest : 1;
+      const w = Math.round(width * scale);
+      const h = Math.round(height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("canvas-unavailable"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("encode-failed"));
+        },
+        "image/jpeg",
+        0.72,
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("decode-failed"));
+    };
+    img.src = url;
+  });
+}
+
+function UploadScreen({ eventId }: { eventId: string }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string>("");
+  const [name, setName] = useState("");
+  const [msg, setMsg] = useState("");
+  const [uploading, setUploading] = useState(false);
+
+  // Build the thumbnail in a handler (NOT during render — react-hooks/purity).
+  const onPick = async (picked: File) => {
+    if (!picked.type.startsWith("image/")) {
+      showToast("אפשר להעלות רק תמונות", "error");
+      return;
+    }
+    setFile(picked);
+    try {
+      setPreview(await readAsDataUrl(picked));
+    } catch {
+      setPreview("");
+    }
+  };
+
+  const reset = () => {
+    setFile(null);
+    setPreview("");
+    setName("");
+    setMsg("");
+  };
+
+  const upload = async () => {
+    if (!file || uploading) return;
+    const supabase = getSupabase();
+    if (!supabase) {
+      showToast("שיתוף התמונות אינו זמין כרגע", "error");
+      return;
+    }
+    setUploading(true);
+    try {
+      const blob = await compressImage(file);
+      // crypto.randomUUID() in a handler is fine — purity rule only bans it
+      // during render. Path is `<event_id>/<uuid>.jpg` per the migration.
+      const path = `${eventId}/${crypto.randomUUID()}.jpg`;
+      const { error: uploadErr } = await supabase.storage
+        .from("event-memories")
+        .upload(path, blob, { contentType: "image/jpeg" });
+      if (uploadErr) {
+        console.error("[UploadScreen] storage upload failed", uploadErr);
+        showToast("ההעלאה נכשלה — נסו שוב 🙏", "error");
+        return;
+      }
+      const { error: insertErr } = await supabase
+        .from("event_memories")
+        .insert({
+          event_id: eventId,
+          uploaded_by_name: name.trim() || null,
+          message: msg.trim() || null,
+          storage_path: path,
+        });
+      if (insertErr) {
+        console.error("[UploadScreen] row insert failed", insertErr);
+        showToast("ההעלאה נכשלה — נסו שוב 🙏", "error");
+        return;
+      }
+      trackEvent("live_memory_upload", { eventId });
+      showToast("התמונה עלתה — תודה! 💛", "success");
+      reset();
+    } catch (err) {
+      console.error("[UploadScreen] unexpected error", err);
+      showToast("משהו השתבש — נסו שוב 🙏", "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <main className="min-h-screen flex flex-col items-center px-5 pt-10 pb-16 relative overflow-x-hidden">
+      <div aria-hidden className="absolute inset-0 -z-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[700px] rounded-full opacity-20" style={{ background: "radial-gradient(circle, rgba(212,176,104,0.45), transparent 70%)" }} />
+      </div>
+
+      <div className="w-full max-w-md relative z-10 flex flex-col items-center">
+        <Logo size={26} />
+
+        <h1 className="mt-8 text-3xl font-extrabold tracking-tight gradient-gold text-center leading-tight">
+          שתפו את הרגע
+        </h1>
+        <p className="mt-2 text-center text-sm" style={{ color: "var(--foreground-soft)" }}>
+          התמונה תופיע על המסך באולם
+        </p>
+
+        {!file && (
+          <label
+            className="mt-10 w-full rounded-3xl py-12 flex flex-col items-center justify-center cursor-pointer btn-gold text-center"
+            style={{ fontSize: "1.25rem", fontWeight: 800 }}
+          >
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={(e) => e.target.files?.[0] && onPick(e.target.files[0])}
+            />
+            <Camera size={40} aria-hidden />
+            <span className="mt-3">📷 שלח תמונה</span>
+          </label>
+        )}
+
+        {file && (
+          <div className="mt-8 w-full card p-5 r26-rise-sm">
+            {preview && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={preview}
+                alt="תצוגה מקדימה"
+                loading="lazy"
+                className="w-full rounded-2xl object-cover max-h-72"
+                style={{ border: "1px solid var(--border)" }}
+              />
+            )}
+            <input
+              className="input mt-4"
+              placeholder="שם"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={60}
+              aria-label="שם"
+              disabled={uploading}
+            />
+            <input
+              className="input mt-3"
+              placeholder="ברכה (לא חובה)"
+              value={msg}
+              onChange={(e) => setMsg(e.target.value)}
+              maxLength={200}
+              aria-label="ברכה"
+              disabled={uploading}
+            />
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={reset}
+                disabled={uploading}
+                className="flex-1 rounded-full py-3 text-sm font-semibold disabled:opacity-40"
+                style={{ background: "var(--input-bg)", border: "1px solid var(--border)", color: "var(--foreground-soft)" }}
+              >
+                החלף תמונה
+              </button>
+              <button
+                type="button"
+                onClick={upload}
+                disabled={uploading}
+                className="flex-[2] btn-gold inline-flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                <Upload size={16} />
+                {uploading ? "מעלה…" : "📤 העלה"}
+              </button>
+            </div>
+            <p className="mt-4 text-center text-xs" style={{ color: "var(--foreground-muted)" }}>
+              התמונה תופיע על המסך באולם
+            </p>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
 // ─────────────────────────────────── Memory album ───────────────────────────────────
 
+interface Memory {
+  id: string;
+  uploaded_by_name: string | null;
+  message: string | null;
+  storage_path: string;
+  created_at: string;
+}
+
+/**
+ * Live, cross-device photo feed for the kiosk. Fetches the latest ~20 rows
+ * from `event_memories`, builds public URLs, and subscribes to realtime
+ * INSERTs so new guest uploads slide in without a refresh. Degrades to
+ * nothing rendered (caller still shows the localStorage album) when Supabase
+ * is not configured.
+ */
+function MemoryFeed({ eventId }: { eventId: string }) {
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!supabase || !eventId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoaded(true);
+      return;
+    }
+
+    let active = true;
+
+    supabase
+      .from("event_memories")
+      .select("id,uploaded_by_name,message,storage_path,created_at")
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) console.error("[MemoryFeed] fetch failed", error);
+        setMemories((data as Memory[] | null) ?? []);
+        setLoaded(true);
+      });
+
+    const channel = supabase
+      .channel("event_memories_" + eventId)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "event_memories",
+          filter: "event_id=eq." + eventId,
+        },
+        (payload) => {
+          const row = payload.new as Memory;
+          setMemories((prev) =>
+            prev.some((m) => m.id === row.id) ? prev : [row, ...prev].slice(0, 40),
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [eventId]);
+
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  const publicUrl = (path: string) =>
+    supabase.storage.from("event-memories").getPublicUrl(path).data.publicUrl;
+
+  return (
+    <section className="mt-10">
+      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+        <Camera size={18} className="text-[--accent]" />
+        תמונות מהאורחים
+      </h2>
+
+      {memories.length === 0 ? (
+        loaded ? (
+          <div
+            className="rounded-3xl py-12 px-6 text-center"
+            style={{ background: "var(--input-bg)", border: "1px dashed var(--border-strong)" }}
+          >
+            <p style={{ color: "var(--foreground-soft)" }}>
+              עוד אין תמונות — סרקו את ה-QR ושתפו את הרגע 📷
+            </p>
+          </div>
+        ) : null
+      ) : (
+        <div className="columns-2 md:columns-3 gap-3">
+          {memories.map((m, i) => {
+            const caption = [m.uploaded_by_name, m.message].filter(Boolean).join(" · ");
+            return (
+              <figure
+                key={m.id}
+                className={`mb-3 break-inside-avoid relative rounded-2xl overflow-hidden ${i === 0 ? "r26-rise-sm" : ""}`}
+                style={{ border: "1px solid var(--border)" }}
+              >
+                {/* Plain <img>: user-uploaded arbitrary content, not next/image. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={publicUrl(m.storage_path)}
+                  alt={m.message || m.uploaded_by_name || "תמונה מהערב"}
+                  loading="lazy"
+                  className="w-full block"
+                />
+                {caption && (
+                  <figcaption
+                    className="absolute inset-x-0 bottom-0 px-3 py-2 text-xs text-white"
+                    style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent)" }}
+                  >
+                    {caption}
+                  </figcaption>
+                )}
+              </figure>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function MemoryAlbum() {
+  const params = useParams<{ eventId: string }>();
+  const eventId = params?.eventId ?? "";
   const { state } = useAppState();
   const event = state.event!;
   const subjects = event.partnerName ? `${event.hostName} ו${event.partnerName}` : event.hostName;
@@ -612,6 +979,8 @@ function MemoryAlbum() {
           </p>
         </header>
 
+        <MemoryFeed eventId={eventId} />
+
         {sortedPhotos.length > 0 && (
           <section className="mt-10">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -648,7 +1017,9 @@ function MemoryAlbum() {
           </section>
         )}
 
-        {sortedBlessings.length === 0 && sortedPhotos.length === 0 && (
+        {/* Only when cloud is OFF — otherwise <MemoryFeed/> shows its own
+            empty state and this blanket line would contradict it. */}
+        {!getSupabase() && sortedBlessings.length === 0 && sortedPhotos.length === 0 && (
           <div className="mt-12 text-center" style={{ color: "var(--foreground-muted)" }}>
             לא נשמרו ברכות או תמונות.
           </div>

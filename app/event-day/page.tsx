@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { buildManagerInviteWhatsapp } from "@/lib/managerInvitation";
+import { LiveModeView } from "@/components/eventDay/LiveModeView";
 import QRCode from "qrcode";
 
 interface RunOfShowItem {
@@ -206,6 +207,24 @@ export default function EventDayPage() {
     year: "numeric",
   });
   const timeNow = now.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+
+  // R27 — on the actual event day, swap the whole screen for the
+  // couple's real-time Live Mode view.
+  const eventDateObj = new Date(event.date);
+  const isLiveDay =
+    !Number.isNaN(eventDateObj.getTime()) &&
+    eventDateObj.getDate() === now.getDate() &&
+    eventDateObj.getMonth() === now.getMonth() &&
+    eventDateObj.getFullYear() === now.getFullYear();
+
+  if (isLiveDay) {
+    return (
+      <>
+        <Header />
+        <LiveModeView event={event} />
+      </>
+    );
+  }
 
   return (
     <>
