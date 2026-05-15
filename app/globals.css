@@ -1099,3 +1099,121 @@ select:focus-visible {
     transform: none !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   R26 — Momentum Live "WOW" motion. transform/opacity only (composited,
+   GPU). Every class is force-disabled under prefers-reduced-motion at
+   the bottom of this block.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Accept-page crown: drops in, then a slow infinite rotation. */
+@keyframes r26-crown-drop {
+  0%   { opacity: 0; transform: translateY(-60px) scale(0.7); }
+  70%  { opacity: 1; transform: translateY(6px) scale(1.05); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes r26-crown-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.r26-crown {
+  animation: r26-crown-drop 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.r26-crown-inner {
+  animation: r26-crown-spin 8s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+/* Generic reveal — used with inline animation-delay for the sequence. */
+@keyframes r26-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.r26-rise { animation: r26-rise 520ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes r26-rise-sm {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.r26-rise-sm { animation: r26-rise-sm 420ms ease-out both; }
+
+/* Soft gold breathing pulse for the primary Accept CTA. */
+@keyframes r26-cta-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(212,176,104,0); }
+  50%      { transform: scale(1.015); box-shadow: 0 0 0 10px rgba(212,176,104,0.10); }
+}
+.r26-cta-pulse { animation: r26-cta-pulse 2.6s ease-in-out infinite; }
+
+/* CSS confetti (no canvas-confetti dep). Each piece gets inline vars. */
+@keyframes r26-confetti-fall {
+  0%   { opacity: 1; transform: translate3d(0,0,0) rotate(0deg); }
+  100% { opacity: 0; transform: translate3d(var(--dx, 0), 105vh, 0) rotate(var(--rot, 540deg)); }
+}
+.r26-confetti-piece {
+  position: fixed;
+  top: -16px;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 90;
+  animation: r26-confetti-fall var(--dur, 2.6s) cubic-bezier(0.3, 0.6, 0.4, 1) forwards;
+}
+
+/* Alert toast slide-down. */
+@keyframes r26-toast-in {
+  from { opacity: 0; transform: translateY(-16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.r26-toast-in { animation: r26-toast-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Critical-alert attention pulse. */
+@keyframes r26-critical-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+  50%      { box-shadow: 0 0 0 5px rgba(245,158,11,0.30); }
+}
+.r26-critical-pulse { animation: r26-critical-pulse 1.4s ease-in-out infinite; }
+
+/* Check-in screen scan line + flashes. */
+@keyframes r26-scanline {
+  0%   { transform: translateY(0); opacity: 0.2; }
+  50%  { opacity: 1; }
+  100% { transform: translateY(var(--scan-h, 220px)); opacity: 0.2; }
+}
+.r26-scanline { animation: r26-scanline 2s ease-in-out infinite; }
+
+@keyframes r26-flash-ok {
+  0% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+  30% { box-shadow: 0 0 0 4px rgba(52,211,153,0.55); }
+  100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+}
+@keyframes r26-flash-err {
+  0% { box-shadow: 0 0 0 0 rgba(248,113,113,0); }
+  30% { box-shadow: 0 0 0 4px rgba(248,113,113,0.55); }
+  100% { box-shadow: 0 0 0 0 rgba(248,113,113,0); }
+}
+.r26-flash-ok  { animation: r26-flash-ok 240ms ease-out; }
+.r26-flash-err { animation: r26-flash-err 240ms ease-out; }
+
+/* StatBubble glow when its value grows. */
+@keyframes r26-bubble-glow {
+  0%   { box-shadow: 0 0 0 0 rgba(212,176,104,0); }
+  40%  { box-shadow: 0 0 28px 4px rgba(212,176,104,0.40); }
+  100% { box-shadow: 0 0 0 0 rgba(212,176,104,0); }
+}
+.r26-bubble-glow { animation: r26-bubble-glow 1.1s ease-out; }
+
+/* Typewriter caret blink for the host-name line. */
+@keyframes r26-caret { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+.r26-caret { animation: r26-caret 900ms step-end infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .r26-crown, .r26-crown-inner, .r26-rise, .r26-rise-sm, .r26-cta-pulse,
+  .r26-confetti-piece, .r26-toast-in, .r26-critical-pulse, .r26-scanline,
+  .r26-flash-ok, .r26-flash-err, .r26-bubble-glow, .r26-caret {
+    animation: none !important;
+  }
+  /* Keep content visible when its entrance animation is removed. */
+  .r26-crown, .r26-rise, .r26-rise-sm { opacity: 1 !important; transform: none !important; }
+  .r26-confetti-piece { display: none !important; }
+}

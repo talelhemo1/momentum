@@ -9,6 +9,11 @@ import { Logo } from "@/components/Logo";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
 import type { AppState } from "@/lib/types";
 import { generateSmartAlerts, type SmartAlert } from "@/lib/managerLive";
+import { StatBubble } from "@/components/managerLive/StatBubble";
+import {
+  AlertToastStack,
+  type AlertToastData,
+} from "@/components/managerLive/AlertToast";
 import {
   ScanLine,
   Phone,
@@ -21,8 +26,6 @@ import {
   Check,
   Clock,
   MapPin,
-  ArrowLeft,
-  Lightbulb,
   X,
   AlertTriangle,
   Award,
@@ -510,27 +513,43 @@ export default function ManagerDashboardPage() {
       </header>
 
       <div className="max-w-5xl mx-auto px-5 pt-6">
-        {/* Primary CTA — Check-in scanner */}
+        {/* R26 — the moments grid: 3 luxury stat bubbles. */}
+        <section className="grid grid-cols-3 gap-2 mb-6 r26-rise">
+          <StatBubble label="הגיעו" value={data.arrivedCount} />
+          <StatBubble
+            label="אחוז"
+            value={
+              data.totalGuests > 0
+                ? Math.round((data.arrivedCount / data.totalGuests) * 100)
+                : 0
+            }
+            suffix="%"
+            ring={
+              data.totalGuests > 0
+                ? Math.round((data.arrivedCount / data.totalGuests) * 100)
+                : 0
+            }
+          />
+          <StatBubble
+            label="נותרו"
+            value={Math.max(0, data.totalGuests - data.arrivedCount)}
+          />
+        </section>
+
+        {/* R26 — giant primary check-in CTA (64px, gradient-gold). */}
         <Link
           href={`/manage/${eventId}/checkin`}
-          className="card-gold p-5 flex items-center justify-between group hover:translate-y-[-2px] transition mb-3"
+          className="flex items-center justify-center gap-3 rounded-2xl mb-4 font-extrabold text-lg transition hover:translate-y-[-2px] r26-rise"
+          style={{
+            minHeight: 64,
+            background: "linear-gradient(135deg, #F4DEA9, #A8884A)",
+            color: "#1A1310",
+            boxShadow: "0 12px 30px -8px rgba(212,176,104,0.55)",
+            animationDelay: "0.08s",
+          }}
         >
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F4DEA9]/30 to-[#A8884A]/15 flex items-center justify-center text-[--accent]">
-              <ScanLine size={28} aria-hidden />
-            </div>
-            <div>
-              <div className="font-bold">סריקת QR בכניסה</div>
-              <div className="text-xs mt-0.5" style={{ color: "var(--foreground-soft)" }}>
-                סרוק אורחים שמגיעים — קליק אחד
-              </div>
-            </div>
-          </div>
-          <ArrowLeft
-            size={20}
-            className="text-[--accent] opacity-60 group-hover:opacity-100"
-            aria-hidden
-          />
+          <ScanLine size={24} aria-hidden />
+          פתח QR Scanner
         </Link>
 
         {/* Phase 5 + 6 — Crisis Mode + post-event report. */}
@@ -567,58 +586,40 @@ export default function ManagerDashboardPage() {
           </Link>
         </div>
 
-        {/* R20 Phase 3 — AI Co-Pilot smart alerts. Shows up to 3 active
-            alerts; dismissed ones never re-fire (id-based dismissal set). */}
-        {smartAlerts.filter((a) => !dismissedAlerts.has(a.id)).length > 0 && (
-          <section className="mb-6">
-            <h2 className="font-bold text-lg mb-3 flex items-center gap-2">
-              <Lightbulb size={20} className="text-amber-400" aria-hidden />
-              AI Co-Pilot
-            </h2>
-            <div className="space-y-2">
-              {smartAlerts
-                .filter((a) => !dismissedAlerts.has(a.id))
-                .slice(0, 3)
-                .map((alert) => (
-                  <SmartAlertCard
-                    key={alert.id}
-                    alert={alert}
-                    onDismiss={() =>
-                      setDismissedAlerts((prev) => {
-                        const next = new Set(prev);
-                        next.add(alert.id);
-                        return next;
-                      })
+        {/* R26 — AI Co-Pilot alerts as luxury slide-down toasts: fixed
+            top stack (max 3), swipe-right to dismiss, auto-dismiss after
+            8s unless critical. Replaces the old inline panel. */}
+        <AlertToastStack
+          alerts={smartAlerts
+            .filter((a) => !dismissedAlerts.has(a.id))
+            .map(
+              (a): AlertToastData => ({
+                id: a.id,
+                severity: a.severity,
+                title: a.title,
+                body: a.description,
+                actionLabel: a.actionLabel,
+                onAction: a.actionType
+                  ? () => {
+                      void handleVendorAction(
+                        a.actionType as string,
+                        a.actionLabel ?? a.title,
+                      );
+                      setDismissedAlerts((prev) =>
+                        new Set(prev).add(a.id),
+                      );
                     }
-                    onAction={() => {
-                      if (alert.actionType) {
-                        void handleVendorAction(
-                          alert.actionType,
-                          alert.actionLabel ?? alert.title,
-                        );
-                      }
-                      setDismissedAlerts((prev) => {
-                        const next = new Set(prev);
-                        next.add(alert.id);
-                        return next;
-                      });
-                    }}
-                  />
-                ))}
-            </div>
-          </section>
-        )}
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <StatBox label="הגיעו" value={data.arrivedCount} color="emerald" />
-          <StatBox
-            label="ממתינים"
-            value={data.totalGuests - data.arrivedCount}
-            color="amber"
-          />
-          <StatBox label="שולחנות" value={data.tables.length} color="gold" />
-        </div>
+                  : undefined,
+              }),
+            )}
+          onDismiss={(id) =>
+            setDismissedAlerts((prev) => {
+              const next = new Set(prev);
+              next.add(id);
+              return next;
+            })
+          }
+        />
 
         {/* Vendor quick actions */}
         <section className="mb-8">
@@ -738,81 +739,3 @@ export default function ManagerDashboardPage() {
   );
 }
 
-function StatBox({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: "emerald" | "amber" | "gold";
-}) {
-  const colorMap = {
-    emerald: "text-emerald-400",
-    amber: "text-amber-400",
-    gold: "gradient-gold",
-  };
-  return (
-    <div className="card p-4 text-center">
-      <div className={`text-3xl font-extrabold ltr-num ${colorMap[color]}`}>{value}</div>
-      <div className="text-xs mt-1" style={{ color: "var(--foreground-muted)" }}>
-        {label}
-      </div>
-    </div>
-  );
-}
-
-/**
- * R20 Phase 3 — single AI Co-Pilot alert. Severity drives the tint:
- * warning (amber), critical (red), success (emerald), info (sky). Optional
- * one-click action dispatches the same vendor-action that the manual
- * vendor-action buttons use, so the audit log stays consistent.
- */
-function SmartAlertCard({
-  alert,
-  onDismiss,
-  onAction,
-}: {
-  alert: SmartAlert;
-  onDismiss: () => void;
-  onAction: () => void;
-}) {
-  const colorMap: Record<SmartAlert["severity"], string> = {
-    info: "border-sky-400/30 bg-sky-400/5",
-    warning: "border-amber-400/30 bg-amber-400/5",
-    success: "border-emerald-400/30 bg-emerald-400/5",
-    critical: "border-red-400/30 bg-red-400/5",
-  };
-  return (
-    <div
-      className={`rounded-2xl p-4 border ${colorMap[alert.severity]} flex items-start gap-3`}
-    >
-      <div className="text-2xl shrink-0" aria-hidden>
-        {alert.emoji}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-bold">{alert.title}</div>
-        <div className="text-xs mt-1" style={{ color: "var(--foreground-soft)" }}>
-          {alert.description}
-        </div>
-        {alert.actionLabel && (
-          <button
-            type="button"
-            onClick={onAction}
-            className="btn-gold text-xs mt-3 px-3 py-1.5"
-          >
-            {alert.actionLabel}
-          </button>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label="התעלם מההתראה"
-        className="p-1 rounded-lg hover:bg-white/5 shrink-0"
-      >
-        <X size={14} aria-hidden />
-      </button>
-    </div>
-  );
-}

@@ -10,6 +10,11 @@ import { useTheme } from "@/lib/theme";
 import { useAppState, actions } from "@/lib/store";
 import { eventSlots } from "@/lib/eventSlots";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
+import {
+  managerSoundsEnabled,
+  setManagerSoundsEnabled,
+  playManagerSound,
+} from "@/lib/managerSounds";
 import { generateSigningKey } from "@/lib/crypto";
 import { deleteCloudData } from "@/lib/sync";
 import { formatEventDate } from "@/lib/format";
@@ -40,6 +45,12 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { state } = useAppState();
   const [notifyEnabled, setNotifyEnabled] = useState<NotificationPermission | "unknown">("unknown");
+  // R26 — Momentum Live alert-sound opt-in.
+  const [soundsOn, setSoundsOn] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSoundsOn(managerSoundsEnabled());
+  }, []);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteInput, setDeleteInput] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -320,6 +331,44 @@ export default function SettingsPage() {
               <p className="text-xs mt-3" style={{ color: "var(--foreground-muted)" }}>
                 נתריע על תזכורות תשלום, מועדים אחרונים לסגירת ספקים, ואורחים שעוד לא ענו.
               </p>
+
+              {/* R26 — Momentum Live alert sounds */}
+              <div
+                className="mt-4 pt-4 flex items-center justify-between gap-3"
+                style={{ borderTop: "1px solid var(--border)" }}
+              >
+                <div>
+                  <div className="text-sm font-medium">🔔 צלילי התראה במצב חי</div>
+                  <div className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
+                    צליל עדין על צ׳ק-אין והתראות חכמות במהלך האירוע.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={soundsOn}
+                  onClick={() => {
+                    const next = !soundsOn;
+                    setSoundsOn(next);
+                    setManagerSoundsEnabled(next);
+                    if (next) playManagerSound("checkin");
+                  }}
+                  className="relative w-12 h-7 rounded-full shrink-0 transition-colors"
+                  style={{
+                    background: soundsOn ? "var(--accent)" : "var(--input-bg)",
+                    border: "1px solid var(--border-strong)",
+                  }}
+                  aria-label="צלילי התראה במצב חי"
+                >
+                  <span
+                    className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform"
+                    style={{
+                      insetInlineStart: 2,
+                      transform: soundsOn ? "translateX(-20px)" : "translateX(0)",
+                    }}
+                  />
+                </button>
+              </div>
             </Section>
 
             {/* Print */}

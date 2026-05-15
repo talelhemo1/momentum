@@ -7,7 +7,10 @@ import { getSupabase } from "@/lib/supabase";
 import { showToast } from "@/components/Toast";
 import { Logo } from "@/components/Logo";
 import { Footer } from "@/components/Footer";
-import { Crown, Check, Loader2, AlertCircle } from "lucide-react";
+import { Crown, Check, Loader2, AlertCircle, Sparkles } from "lucide-react";
+import { Confetti } from "@/components/managerLive/Confetti";
+import { haptic } from "@/lib/haptic";
+import { playManagerSound } from "@/lib/managerSounds";
 
 /**
  * R20 Phase 2 — manager accepts the invitation.
@@ -56,6 +59,8 @@ function AcceptInner() {
   const [invitation, setInvitation] = useState<InvitationView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
+  // R26 — post-accept celebration (confetti + welcome) before redirect.
+  const [celebrating, setCelebrating] = useState(false);
   // Single-slot timeout cleanup: avoids leaking pending router.push calls when
   // the user navigates away mid-redirect (P1 #6).
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -65,6 +70,11 @@ function AcceptInner() {
       cleanupRef.current?.();
     };
   }, []);
+
+  // R26 — gentle haptic the moment the reveal (and Accept CTA) lands.
+  useEffect(() => {
+    if (invitation && !loading && !error) haptic.medium();
+  }, [invitation, loading, error]);
 
   useEffect(() => {
     if (!token) {
@@ -215,8 +225,12 @@ function AcceptInner() {
     }
 
     const eventId = data[0].event_id;
-    showToast("נהדר! מעביר אותך לדשבורד...", "success");
-    const t = setTimeout(() => router.push(`/manage/${eventId}`), 1000);
+    // R26 — celebrate before the redirect: confetti + haptic + welcome.
+    haptic.success();
+    playManagerSound("checkin");
+    setCelebrating(true);
+    showToast("🎉 ברוך הבא לצוות הניהול", "success");
+    const t = setTimeout(() => router.push(`/manage/${eventId}`), 1500);
     cleanupRef.current = () => clearTimeout(t);
   };
 
@@ -240,48 +254,90 @@ function AcceptInner() {
     );
   }
 
+  const firstName = invitation!.inviteeName.trim().split(/\s+/)[0];
+  const benefits = [
+    "סריקת QR בכניסה — לדעת מי הגיע, מי לא",
+    "צפייה במפת השולחנות בזמן אמת",
+    "תיאום מהיר עם הספקים (DJ, צלם, קייטרינג)",
+    "גמישות לעדכן הושבה במקום",
+  ];
+
   return (
     <>
-      <main className="min-h-screen pb-16 px-5">
-        <div className="max-w-xl mx-auto pt-12">
+      {celebrating && <Confetti />}
+      <main
+        className="min-h-screen pb-16 px-5 relative overflow-hidden"
+        style={{
+          background:
+            "radial-gradient(120% 80% at 50% -10%, rgba(212,176,104,0.16), transparent 60%), var(--background)",
+        }}
+      >
+        {/* Small floating glow orbs (kept tiny to protect FPS). */}
+        <div aria-hidden className="glow-orb glow-orb-gold w-[320px] h-[320px] -top-24 right-[-60px] opacity-30 float-slow" />
+        <div aria-hidden className="glow-orb glow-orb-gold w-[240px] h-[240px] top-1/3 left-[-70px] opacity-20 float-medium" />
+        <div aria-hidden className="glow-orb glow-orb-gold w-[200px] h-[200px] bottom-10 right-1/4 opacity-20 float-slow" />
+
+        <div className="max-w-xl mx-auto pt-12 relative z-10">
           <div className="text-center">
-            <Logo size={28} />
-            <Crown size={48} className="mx-auto mt-8 text-[--accent]" aria-hidden />
-            <h1 className="mt-6 text-3xl font-extrabold gradient-gold">
-              היי {invitation!.inviteeName}!
+            <div className="r26-rise"><Logo size={28} /></div>
+
+            {/* Crown: drop in, then perpetual slow spin. */}
+            <div className="r26-crown mt-8 inline-block">
+              <div className="r26-crown-inner">
+                <Crown size={64} className="text-[--accent]" aria-hidden />
+              </div>
+            </div>
+
+            <p
+              className="mt-7 text-base r26-rise"
+              style={{ animationDelay: "0.35s", color: "var(--foreground-soft)" }}
+            >
+              {invitation!.inviterName} בחרו בך 💛
+            </p>
+
+            <h1
+              className="mt-2 font-extrabold gradient-gold r26-rise leading-tight"
+              style={{ animationDelay: "0.7s", fontSize: "clamp(40px, 11vw, 56px)" }}
+            >
+              היי {firstName} 👋
             </h1>
-            <p className="mt-3 text-base" style={{ color: "var(--foreground-soft)" }}>
+
+            <p
+              className="mt-4 text-base r26-rise"
+              style={{ animationDelay: "1.1s", color: "var(--foreground-soft)" }}
+            >
               {invitation!.inviterName} מזמינים אותך להיות{" "}
-              <strong className="text-[--foreground]">מנהל/ת האירוע</strong> שלהם
+              <strong className="text-[--foreground]">מנהל/ת האירוע</strong> שלהם —
+              עוזר/ת לנהל איתם את הרגע הכי חשוב.
             </p>
           </div>
 
-          <div className="mt-10 card-gold p-6">
+          <div
+            className="mt-9 card-gold p-6 r26-rise"
+            style={{ animationDelay: "1.5s" }}
+          >
             <h2 className="font-bold text-lg mb-4">מה התפקיד כולל?</h2>
             <ul className="space-y-3 text-sm">
-              <li className="flex items-start gap-2">
-                <Check size={16} className="text-emerald-400 shrink-0 mt-0.5" aria-hidden />
-                <span>סריקת QR בכניסה — לדעת מי הגיע, מי לא</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <Check size={16} className="text-emerald-400 shrink-0 mt-0.5" aria-hidden />
-                <span>צפייה במפת השולחנות בזמן אמת</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <Check size={16} className="text-emerald-400 shrink-0 mt-0.5" aria-hidden />
-                <span>תיאום מהיר עם הספקים (DJ, צלם, קייטרינג)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <Check size={16} className="text-emerald-400 shrink-0 mt-0.5" aria-hidden />
-                <span>גמישות לעדכן הושבה במקום</span>
-              </li>
+              {benefits.map((b, i) => (
+                <li
+                  key={b}
+                  className="flex items-start gap-2 r26-rise-sm"
+                  style={{ animationDelay: `${1.6 + i * 0.1}s` }}
+                >
+                  <Check size={16} className="text-emerald-400 shrink-0 mt-0.5" aria-hidden />
+                  <span>{b}</span>
+                </li>
+              ))}
             </ul>
             <p className="mt-5 text-xs" style={{ color: "var(--foreground-muted)" }}>
               הכל מהנייד שלך. אין צורך להוריד אפליקציה.
             </p>
           </div>
 
-          <div className="mt-8 grid grid-cols-2 gap-2">
+          <div
+            className="mt-8 grid grid-cols-2 gap-2 r26-rise"
+            style={{ animationDelay: "2s" }}
+          >
             <Link
               href="/"
               className="rounded-2xl py-4 text-center text-sm"
@@ -296,14 +352,14 @@ function AcceptInner() {
             <button
               type="button"
               onClick={handleAccept}
-              disabled={accepting}
-              className="btn-gold inline-flex items-center justify-center gap-2 py-4 disabled:opacity-50"
+              disabled={accepting || celebrating}
+              className="btn-gold r26-cta-pulse inline-flex items-center justify-center gap-2 py-4 disabled:opacity-50"
             >
-              {accepting ? (
+              {accepting || celebrating ? (
                 <Loader2 className="animate-spin" size={16} aria-hidden />
               ) : (
                 <>
-                  <Check size={16} aria-hidden /> אני בעניין!
+                  <Sparkles size={16} aria-hidden /> אני בעניין ✨
                 </>
               )}
             </button>

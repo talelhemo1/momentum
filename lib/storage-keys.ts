@@ -53,6 +53,8 @@ export const STORAGE_KEYS = {
   // so the Header / nav / router decisions don't need a fresh Supabase
   // query on every page navigation.
   vendorContext: "momentum.vendor.context.v1",
+  // R26 — Momentum Live alert-sound opt-in (default off).
+  managerSounds: "momentum.manager.sounds.v1",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

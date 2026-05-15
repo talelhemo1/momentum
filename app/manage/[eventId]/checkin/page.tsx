@@ -8,6 +8,9 @@ import { showToast } from "@/components/Toast";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
 import type { AppState } from "@/lib/types";
 import { buildGuestWelcomeWhatsapp } from "@/lib/guestWelcome";
+import { haptic } from "@/lib/haptic";
+import { playManagerSound } from "@/lib/managerSounds";
+import { useCountUp } from "@/lib/useCountUp";
 import { ArrowRight, Check, Loader2, UserPlus, Search, MessageCircle } from "lucide-react";
 
 /**
@@ -44,6 +47,15 @@ export default function CheckinPage() {
   // event_managers row id (per the migration's foreign-key target).
   const [userId, setUserId] = useState<string | null>(null);
   const [recentlyChecked, setRecentlyChecked] = useState<string | null>(null);
+  // R26 — short-lived (~240ms) flash on the row that just succeeded/failed.
+  const [flashOk, setFlashOk] = useState<string | null>(null);
+  const [flashErr, setFlashErr] = useState<string | null>(null);
+  const flashRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    return () => {
+      flashRef.current?.();
+    };
+  }, []);
 
   // R20 Phase 3 — we keep a snapshot of the host's AppState in memory so we
   // can build the guest-welcome WhatsApp message after a check-in. The
@@ -186,16 +198,34 @@ export default function CheckinPage() {
       const isDup = error.code === "23505" || /duplicate|unique/i.test(msg);
       if (!isDup) {
         console.error("[manage/checkin] arrival insert failed", error);
-        showToast("הסימון נכשל — נסה שוב", "error");
+        haptic.error();
+        setFlashErr(guestId);
+        showToast("הסימון נכשל — נסו שוב", "error");
         // Roll back the optimistic flip.
         setGuests((prev) =>
           prev.map((g) => (g.id === guestId ? { ...g, arrived: false } : g)),
         );
+        const te = window.setTimeout(() => setFlashErr(null), 240);
+        flashRef.current = () => window.clearTimeout(te);
         return;
       }
     }
 
-    showToast("✓ סומן כהגיע", "success");
+    // R26 — luxe success feedback: haptic + subtle sound + brief glow flash.
+    haptic.success();
+    playManagerSound("checkin");
+    setFlashOk(guestId);
+    const tf = window.setTimeout(() => setFlashOk(null), 240);
+    flashRef.current = () => window.clearTimeout(tf);
+
+    const checked = guests.find((g) => g.id === guestId);
+    const checkedTable = checked?.tableId
+      ? localState?.tables?.find((t) => t.id === checked.tableId)?.name
+      : undefined;
+    showToast(
+      `✅ ${checked?.name ?? "האורח"} · שולחן ${checkedTable ?? "—"}`,
+      "success",
+    );
 
     // R20 Phase 3 — build the wa.me URL so the manager can send the guest
     // their table + welcome card with one tap. Only meaningful when the
@@ -223,6 +253,10 @@ export default function CheckinPage() {
     (g) => !search.trim() || g.name.toLowerCase().includes(search.trim().toLowerCase()),
   );
 
+  const arrivedCount = guests.filter((g) => g.arrived).length;
+  // R26 — animate the arrivals number whenever it grows.
+  const arrivedDisplay = useCountUp(arrivedCount, 1200);
+
   if (!authorized || loading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
@@ -231,10 +265,8 @@ export default function CheckinPage() {
     );
   }
 
-  const arrivedCount = guests.filter((g) => g.arrived).length;
-
   return (
-    <main className="min-h-screen pb-20">
+    <main className="min-h-screen pb-20 r26-rise">
       <header
         className="sticky top-0 z-40 backdrop-blur-md border-b"
         style={{ background: "rgba(20,16,12,0.92)", borderColor: "var(--border)" }}
@@ -255,32 +287,107 @@ export default function CheckinPage() {
               צ&apos;ק-אין בכניסה
             </div>
             <div className="font-bold text-sm">
-              <span className="ltr-num">{arrivedCount}</span> / <span className="ltr-num">{guests.length}</span> הגיעו
+              <span className="ltr-num">{arrivedDisplay}</span> / <span className="ltr-num">{guests.length}</span> הגיעו
             </div>
           </div>
         </div>
       </header>
 
       <div className="max-w-2xl mx-auto px-5 pt-4">
-        <div className="relative mb-4">
-          <Search
-            size={18}
-            className="absolute right-3 top-1/2 -translate-y-1/2"
-            style={{ color: "var(--foreground-muted)" }}
+        <h1 className="text-lg font-bold mb-3">✏️ צ&apos;ק-אין ידני</h1>
+
+        {/* R26 — decorative scanner-style frame. There is no camera; this is
+            a stylistic nod around the existing search + results list. */}
+        <div
+          className="relative rounded-2xl p-4 mb-4"
+          style={{
+            border: "1px solid var(--border)",
+            boxShadow: "0 0 24px -6px rgba(34,211,238,0.5)",
+          }}
+        >
+          {/* 4 cyan corner brackets */}
+          <span
             aria-hidden
+            className="absolute top-2 right-2 rounded-tr-md"
+            style={{
+              width: 28,
+              height: 28,
+              borderTop: "2px solid rgb(34,211,238)",
+              borderRight: "2px solid rgb(34,211,238)",
+            }}
           />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="חפש שם של אורח..."
-            className="input pr-10 text-base"
-            autoFocus
+          <span
+            aria-hidden
+            className="absolute top-2 left-2 rounded-tl-md"
+            style={{
+              width: 28,
+              height: 28,
+              borderTop: "2px solid rgb(34,211,238)",
+              borderLeft: "2px solid rgb(34,211,238)",
+            }}
           />
+          <span
+            aria-hidden
+            className="absolute bottom-2 right-2 rounded-br-md"
+            style={{
+              width: 28,
+              height: 28,
+              borderBottom: "2px solid rgb(34,211,238)",
+              borderRight: "2px solid rgb(34,211,238)",
+            }}
+          />
+          <span
+            aria-hidden
+            className="absolute bottom-2 left-2 rounded-bl-md"
+            style={{
+              width: 28,
+              height: 28,
+              borderBottom: "2px solid rgb(34,211,238)",
+              borderLeft: "2px solid rgb(34,211,238)",
+            }}
+          />
+
+          <div className="relative">
+            <Search
+              size={18}
+              className="absolute right-3 top-1/2 -translate-y-1/2 z-10"
+              style={{ color: "var(--foreground-muted)" }}
+              aria-hidden
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="חפש שם של אורח..."
+              className="input pr-10 text-base"
+              autoFocus
+            />
+          </div>
+
+          {/* Looping cyan scan line */}
+          <div
+            aria-hidden
+            className="relative mt-3 h-0.5 w-full overflow-hidden"
+          >
+            <div
+              className="r26-scanline"
+              style={{
+                height: 2,
+                width: "100%",
+                background: "rgb(34,211,238)",
+              }}
+            />
+          </div>
+          <p
+            className="mt-2 text-center text-xs"
+            style={{ color: "var(--foreground-muted)" }}
+          >
+            חפש אורח לצ&apos;ק-אין מהיר
+          </p>
         </div>
 
         <div className="space-y-2">
-          {filtered.map((g) => {
+          {filtered.map((g, i) => {
             // R20 Phase 3 — surface the WhatsApp welcome link only on the
             // guest that was JUST checked in (matches recentlyChecked +
             // lastCheckedGuest). It fades out 2s later when recentlyChecked
@@ -293,8 +400,11 @@ export default function CheckinPage() {
               <div
                 key={g.id}
                 className={`card p-4 transition ${
-                  recentlyChecked === g.id ? "ring-2 ring-emerald-400" : ""
-                }`}
+                  i < 6 ? "r26-rise-sm" : ""
+                } ${recentlyChecked === g.id ? "ring-2 ring-emerald-400" : ""} ${
+                  flashOk === g.id ? "r26-flash-ok" : ""
+                } ${flashErr === g.id ? "r26-flash-err" : ""}`}
+                style={i < 6 ? { animationDelay: `${i * 60}ms` } : undefined}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
