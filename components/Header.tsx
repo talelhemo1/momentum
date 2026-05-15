@@ -66,14 +66,19 @@ export function Header() {
     // Supabase signOut completed, leaving the user signed in for the
     // next page render. Await fully + hard-reload so every in-memory
     // cache (useIsAdmin, supabase client, useUser snapshot) starts
-    // fresh on the home page.
+    // fresh on the destination page.
+    // R19 — destination changed from "/" to "/signup". Landing on "/"
+    // after sign-out felt like the user was still inside their account
+    // (the marketing homepage looks similar to a signed-out dashboard).
+    // Sending them straight to /signup makes the state change obvious
+    // and gives them a single, clear next action.
     try {
       await userActions.signOut();
     } finally {
       // window.location.href forces a real navigation, not Next's
       // client-side route swap. This wipes the React tree + module
       // scope, guaranteeing no stale state survives the sign-out.
-      window.location.href = "/";
+      window.location.href = "/signup";
     }
   };
 

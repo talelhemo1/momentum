@@ -330,6 +330,21 @@ export const userActions = {
         // the prior user's vendor pill for ~1s until the server check
         // returns "no landing".
         ls.removeItem("momentum.vendor.context.v1");
+        // R19 — wipe the AppState too. Until this fix, signing out only
+        // cleared the auth identity; the event/guests/budget payload was
+        // still in localStorage, so the Header kept rendering the previous
+        // user's event card in the top-left until a manual refresh.
+        // Strings hard-coded for the same circular-import reason as above —
+        // keep in sync with STORAGE_KEYS.app / .slots / .activeSlotId.
+        ls.removeItem("momentum.app.v1");
+        ls.removeItem("momentum.app.slots");
+        ls.removeItem("momentum.app.activeSlotId");
+        ls.removeItem("momentum.terms_accepted_at");
+        ls.removeItem("momentum.selectedTier");
+        // Notify any live subscribers (Header, AssistantWidget, sync hooks)
+        // that local state was wiped, so they re-render against an empty
+        // store immediately rather than waiting for the next storage event.
+        window.dispatchEvent(new CustomEvent("momentum:update"));
       }
     } catch (e) {
       console.error("[momentum/user] localStorage purge failed", e);

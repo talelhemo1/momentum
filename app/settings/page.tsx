@@ -392,10 +392,12 @@ export default function SettingsPage() {
                   // R12+ — same fix as Header: hard-reload to wipe every
                   // in-memory cache (admin badge, supabase client, user
                   // store) so the next render truly is signed-out.
+                  // R19 — destination /signup (was /). See Header.handleSignOut
+                  // for the rationale.
                   try {
                     await userActions.signOut();
                   } finally {
-                    window.location.href = "/";
+                    window.location.href = "/signup";
                   }
                 }}
                 className="w-full rounded-xl py-2.5 text-sm font-semibold transition"
