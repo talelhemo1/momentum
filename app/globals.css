@@ -796,6 +796,70 @@ body {
 @keyframes scale-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
 .scale-in { animation: scale-in 350ms ease-out both; }
 
+/* R21 — luxury range slider for the Smart Calculators. Gold thumb with
+   a soft glow, slim neutral track, 44px touch target on the thumb. */
+.r21-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--gold-300) 0%,
+    var(--gold-300) var(--r21-fill, 50%),
+    var(--border-strong) var(--r21-fill, 50%),
+    var(--border-strong) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+.r21-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #F4DEA9, #A8884A);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 6px rgba(212, 176, 104, 0.18),
+    0 4px 12px -2px rgba(212, 176, 104, 0.55);
+  transition: transform 150ms ease, box-shadow 200ms ease;
+}
+.r21-range::-webkit-slider-thumb:hover,
+.r21-range:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 9px rgba(212, 176, 104, 0.22),
+    0 6px 16px -2px rgba(212, 176, 104, 0.65);
+}
+.r21-range::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #F4DEA9, #A8884A);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 6px rgba(212, 176, 104, 0.18),
+    0 4px 12px -2px rgba(212, 176, 104, 0.55);
+}
+/* Bigger invisible hit-area so the touch target clears 44px on mobile
+   without visually fattening the track. */
+.r21-range-wrap { padding: 12px 0; }
+
+/* R21 — soft gold flash when a simulated total improves, red when it
+   gets more expensive. Applied for ~600ms then removed. */
+@keyframes r21-flash-save {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+  35% { box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+@keyframes r21-flash-cost {
+  0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
+  35% { box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
+}
+.r21-flash-save { animation: r21-flash-save 600ms ease-out; }
+.r21-flash-cost { animation: r21-flash-cost 600ms ease-out; }
+
 /* R18 §1B — consent-box attention pulse. Fired when a user taps an auth
    button while the terms checkbox is still unchecked. 3 pulses × 600ms. */
 @keyframes consent-pulse {

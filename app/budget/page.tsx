@@ -11,6 +11,7 @@ import { BudgetSkeleton } from "@/components/skeletons/PageSkeletons";
 import { EmptyState } from "@/components/EmptyState";
 import { CfoSection } from "@/components/cfo/CfoSection";
 import { TransparencySection } from "@/components/cfo/TransparencySection";
+import { CalculatorsHub } from "@/components/calculators/CalculatorsHub";
 import { useAppState, actions } from "@/lib/store";
 import { useUser } from "@/lib/user";
 import {
@@ -40,7 +41,7 @@ import {
 
 const CATEGORIES = Object.keys(BUDGET_CATEGORY_LABELS) as BudgetCategory[];
 
-type BudgetTab = "budget" | "cfo" | "transparency";
+type BudgetTab = "budget" | "calculators" | "cfo" | "transparency";
 
 // R12 §2M — `vendor_cost_reports` has no submission UI yet, so the
 // transparency tab would always show the "not enough data" empty state.
@@ -50,6 +51,7 @@ const TRANSPARENCY_TAB_ENABLED = false;
 
 const BUDGET_TABS: ReadonlyArray<{ id: BudgetTab; label: string; emoji: string }> = [
   { id: "budget", label: "תקציב", emoji: "💰" },
+  { id: "calculators", label: "מחשבונים", emoji: "🧮" },
   { id: "cfo", label: "AI CFO", emoji: "🤖" },
   ...(TRANSPARENCY_TAB_ENABLED
     ? ([{ id: "transparency" as const, label: "השוואת מחירים", emoji: "📊" }])
@@ -183,6 +185,12 @@ export default function BudgetPage() {
               );
             })}
           </div>
+
+          {activeTab === "calculators" && (
+            <div className="mt-8">
+              <CalculatorsHub state={state} />
+            </div>
+          )}
 
           {activeTab === "cfo" && (
             <div className="mt-8">
