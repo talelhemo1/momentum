@@ -70,10 +70,36 @@ function VendorCardImpl({
     }, 700);
   };
 
+  // R18 §H — first-run "add to my list" affordance. Once the user has
+  // saved any vendor we drop the in-body pill (the overlay +/✓ badge is
+  // enough once they know the pattern). Persisted so it survives reloads.
+  const HAS_SAVED_KEY = "momentum.has_saved_vendor.v1";
+  const [hasSavedEver, setHasSavedEver] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true; // SSR: hide to avoid flash
+    try {
+      return window.localStorage.getItem(HAS_SAVED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  const markSavedEver = () => {
+    if (hasSavedEver) return;
+    try {
+      window.localStorage.setItem(HAS_SAVED_KEY, "1");
+    } catch {
+      /* private mode — in-memory only */
+    }
+    setHasSavedEver(true);
+  };
+
   const handleSave = (e: React.MouseEvent) => {
     e.stopPropagation();
     actions.toggleVendor(vendor.id);
-    if (!selected) emitFloater("save");
+    if (!selected) {
+      emitFloater("save");
+      markSavedEver();
+    }
   };
   const handleCompare = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -242,6 +268,27 @@ function VendorCardImpl({
             </a>
           </div>
         </div>
+
+        {/* R18 §H — prominent in-body "save" pill, shown only until the
+            user has saved their first vendor (then the overlay badge is
+            enough). Disappears once `selected` too. */}
+        {!hasSavedEver && !selected && (
+          <button
+            type="button"
+            onClick={handleSave}
+            data-no-quicklook
+            className="mt-3 w-full rounded-full py-2.5 text-sm font-semibold inline-flex items-center justify-center gap-2 transition hover:translate-y-[-1px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent]"
+            style={{
+              background: "linear-gradient(135deg, rgba(244,222,169,0.18), rgba(168,136,74,0.08))",
+              border: "1px solid var(--border-gold)",
+              color: "var(--accent)",
+            }}
+            aria-label={`הוסף את ${vendor.name} לרשימה שלי`}
+          >
+            <Plus size={15} />
+            הוסף לרשימה שלי
+          </button>
+        )}
       </div>
     </motion.div>
   );

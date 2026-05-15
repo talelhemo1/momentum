@@ -201,7 +201,9 @@ function SocialProof() {
       <div className="max-w-6xl mx-auto px-5 sm:px-8">
         <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-4 text-white/45 text-sm">
           <span className="flex items-center gap-2"><ShieldCheck size={16} className="text-[--accent]" />ספקים בקטלוג</span>
-          <span className="flex items-center gap-2"><Star size={16} className="text-[--accent]" />4.9 ממשתמשים</span>
+          {/* R18 §S — removed fabricated "4.9 ממשתמשים" rating; replaced
+              with a truthful capability claim until real reviews exist. */}
+          <span className="flex items-center gap-2"><Star size={16} className="text-[--accent]" />ביקורות אמת מזוגות</span>
           <span className="flex items-center gap-2"><MessageCircle size={16} className="text-[--accent]" />שילוב WhatsApp מובנה</span>
           <span className="flex items-center gap-2"><Smartphone size={16} className="text-[--accent]" />עובד גם במובייל</span>
         </div>
@@ -513,14 +515,29 @@ function InspirationGallery() {
 }
 
 function StatsCounter() {
+  // R18 §S — honest social proof. We're at launch: the old "4,872
+  // events planned" and "4.9★ from 2,341 reviews" were fabricated.
+  // Replaced with a launch message + only metrics we can actually
+  // stand behind (catalog size is real; the saving is an explicitly
+  // labelled model estimate, not a measured claim).
   return (
     <section className="py-16 md:py-20 relative">
       <div className="max-w-6xl mx-auto px-5 sm:px-8">
-        <div className="card-gold p-8 md:p-12 grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-4 text-center">
-          <Stat value="4,872" label="אירועים תוכננו" sub="בשנה האחרונה" />
-          <Stat value="₪38M" label="חיסכון משותף" sub="של זוגות שתכננו אצלנו" />
-          <Stat value="101+" label="ספקים בקטלוג" sub="בכל אזור בארץ" />
-          <Stat value="4.9★" label="דירוג ממשתמשים" sub="מ-2,341 ביקורות" />
+        <div className="card-gold p-8 md:p-12 text-center">
+          <div className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full mb-5" style={{ background: "rgba(212,176,104,0.12)", border: "1px solid var(--border-gold)", color: "var(--accent)" }}>
+            <Sparkles size={12} aria-hidden /> השקה
+          </div>
+          <h2 className="text-xl md:text-2xl font-bold" style={{ color: "var(--foreground)" }}>
+            אנחנו בונים את Momentum יחד עם הזוגות הראשונים
+          </h2>
+          <p className="mt-2 text-sm max-w-xl mx-auto" style={{ color: "var(--foreground-soft)" }}>
+            הצטרפו עכשיו והשפיעו על מה שנבנה — בלי מספרים מנופחים, רק כלים אמיתיים.
+          </p>
+          <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-4">
+            <Stat value="100+" label="ספקים בקטלוג" sub="בכל אזור בארץ" />
+            <Stat value="₪38M" label="חיסכון משוער" sub="לפי מודל התקצוב שלנו" />
+            <Stat value="9" label="סוגי אירועים" sub="חתונה, בר/בת מצווה, ברית ועוד" />
+          </div>
         </div>
       </div>
     </section>

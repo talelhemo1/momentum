@@ -11,6 +11,7 @@ import { useUser, userActions } from "@/lib/user";
 import { useSyncStatus, setupCloudSync, getLastSyncError, type SyncStatus } from "@/lib/sync";
 import { useIsAdmin } from "@/lib/useIsAdmin";
 import { useVendorContext } from "@/lib/useVendorContext";
+import { UpgradePlanModal } from "./UpgradePlanModal";
 import { EventSwitcher } from "./EventSwitcher";
 import { eventSlots } from "@/lib/eventSlots";
 import { HEADER_NAV } from "@/lib/navigation";
@@ -249,6 +250,9 @@ function SyncBadge({ status }: { status: SyncStatus }) {
 
 function UserMenu({ name, onSignOut }: { name: string; onSignOut: () => void }) {
   const [open, setOpen] = useState(false);
+  // R18 §R — open the upgrade modal in place instead of navigating away
+  // to /pricing (kept reachable from inside the modal).
+  const [showUpgrade, setShowUpgrade] = useState(false);
   return (
     <div className="relative">
       <button
@@ -277,7 +281,19 @@ function UserMenu({ name, onSignOut }: { name: string; onSignOut: () => void }) 
             {/* Menu items */}
             <div className="p-1">
               <MenuItem href="/settings" icon={<Settings size={14} />} label="הגדרות" />
-              <MenuItem href="/pricing" icon={<CreditCard size={14} />} label="מסלול ותשלומים" badge="שדרג" />
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  setShowUpgrade(true);
+                }}
+                className="w-full rounded-xl flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-[var(--secondary-button-bg)] transition text-start"
+                style={{ color: "var(--foreground-soft)" }}
+              >
+                <span className="text-[--accent]"><CreditCard size={14} /></span>
+                <span className="flex-1">מסלול ותשלומים</span>
+                <span className="pill pill-gold !text-[10px] !py-0 !px-1.5">שדרג</span>
+              </button>
               <MenuItem href="/privacy" icon={<Shield size={14} />} label="פרטיות ותנאים" />
               <MenuItem href="mailto:support@momentum.app" icon={<HelpCircle size={14} />} label="עזרה ותמיכה" />
             </div>
@@ -294,6 +310,7 @@ function UserMenu({ name, onSignOut }: { name: string; onSignOut: () => void }) 
           </div>
         </>
       )}
+      {showUpgrade && <UpgradePlanModal onClose={() => setShowUpgrade(false)} />}
     </div>
   );
 }

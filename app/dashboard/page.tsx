@@ -9,6 +9,7 @@ import { useCountUp } from "@/lib/useCountUp";
 import { useAppState } from "@/lib/store";
 import { useUser } from "@/lib/user";
 import { getJourneyForState, getProgress } from "@/lib/journey";
+import { formatEventDate } from "@/lib/format";
 import { EVENT_TYPE_LABELS, REGION_LABELS, type AppState } from "@/lib/types";
 import { useNow, daysUntil } from "@/lib/useNow";
 import {
@@ -389,11 +390,8 @@ function Hero({
   daysLeft: number | null;
   progress: { done: number; total: number; percent: number };
 }) {
-  const dateFmt = new Date(event.date).toLocaleDateString("he-IL", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  // R18 §N — shared helper instead of an ad-hoc option object.
+  const dateFmt = formatEventDate(event.date, "long");
   const eventLabel = EVENT_TYPE_LABELS[event.type as keyof typeof EVENT_TYPE_LABELS];
   const regionLabel = REGION_LABELS[event.region as keyof typeof REGION_LABELS];
   const subjects = event.partnerName ? `${event.hostName} & ${event.partnerName}` : event.hostName;

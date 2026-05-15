@@ -52,6 +52,22 @@ function SignupPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [consented, setConsented] = useState(false);
+  // R18 §1B — when the user taps an auth button before ticking the
+  // terms box, we flash the consent card (3×600ms) so the reason the
+  // button "did nothing" is obvious instead of a quiet error line.
+  const [consentPulse, setConsentPulse] = useState(false);
+
+  /** Returns true if consent is given. Otherwise sets the error AND
+   *  fires the attention pulse, and returns false so callers bail. */
+  const requireConsent = (): boolean => {
+    if (consented) return true;
+    setError("יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.");
+    setConsentPulse(false);
+    // Re-arm on the next frame so re-clicks restart the animation.
+    window.requestAnimationFrame(() => setConsentPulse(true));
+    window.setTimeout(() => setConsentPulse(false), 1850);
+    return false;
+  };
 
   // Email/password state — kept local to the SignupPage so the user can
   // switch back and forth between modes without losing what they typed.
@@ -85,10 +101,7 @@ function SignupPageInner() {
 
   const handleProvider = async (m: "google" | "apple") => {
     setError(null);
-    if (!consented) {
-      setError("יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.");
-      return;
-    }
+    if (!requireConsent()) return;
     persistConsent();
     if (cloudEnabled) {
       try {
@@ -122,10 +135,7 @@ function SignupPageInner() {
 
   const sendOtp = async () => {
     setError(null);
-    if (!consented) {
-      setError("יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.");
-      return;
-    }
+    if (!requireConsent()) return;
     if (!identifier.trim() || identifier.replace(/\D/g, "").length < 9) return;
     persistConsent();
     if (cloudEnabled) {
@@ -180,10 +190,7 @@ function SignupPageInner() {
 
   const submitEmail = async () => {
     setError(null);
-    if (!consented) {
-      setError("יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.");
-      return;
-    }
+    if (!requireConsent()) return;
     if (!cloudEnabled) {
       setError("Cloud Sync לא מוגדר — הרשמה דרך מייל דורשת Supabase.");
       return;
@@ -220,8 +227,13 @@ function SignupPageInner() {
         router.push(returnTo);
       }
     } catch (e) {
-      // Common Supabase errors come back with a localized-friendly message
-      // already, but we map a couple of well-known ones to clearer Hebrew.
+      // R18 §M — always log the raw error for debugging…
+      console.error("[momentum/signup]", e);
+      // …then surface a mapped Hebrew message for the known cases, and a
+      // single safe fallback for anything else. We no longer pass the
+      // raw Supabase string to the user (it can be English / contain
+      // internals); if it doesn't look like a proper Hebrew sentence we
+      // show the generic support line instead.
       const msg = e instanceof Error ? e.message : "שגיאה לא צפויה";
       if (/invalid login credentials/i.test(msg)) {
         setError("מייל או סיסמה לא נכונים.");
@@ -229,8 +241,13 @@ function SignupPageInner() {
         setError("כתובת המייל הזאת כבר רשומה. עבור להתחברות.");
       } else if (/email not confirmed/i.test(msg)) {
         setError("עדיין לא אישרת את המייל. בדוק את תיבת הדואר.");
-      } else {
+      } else if (/^[֐-׿]/.test(msg.trim())) {
+        // Starts with a Hebrew letter → already a user-facing message.
         setError(msg);
+      } else {
+        setError(
+          "משהו השתבש. נסה שוב, או צור קשר ב-support@momentum.app",
+        );
       }
     } finally {
       setBusy(false);
@@ -261,7 +278,7 @@ function SignupPageInner() {
                   so the disabled buttons looked broken to anyone who hadn't
                   scrolled down to discover the checkbox. */}
               <label
-                className="mb-5 flex items-start gap-3 text-xs cursor-pointer fade-up rounded-2xl p-3"
+                className={`mb-5 flex items-start gap-3 text-xs cursor-pointer fade-up rounded-2xl p-3 ${consentPulse ? "consent-pulse" : ""}`}
                 style={{
                   background: consented ? "rgba(212,176,104,0.08)" : "var(--input-bg)",
                   border: `1px solid ${consented ? "var(--border-gold)" : "var(--border)"}`,
@@ -288,20 +305,15 @@ function SignupPageInner() {
               <ChooseStep
                 cloudEnabled={cloudEnabled}
                 providers={providers}
+                consented={consented}
                 onProvider={handleProvider}
                 onPhone={() => {
-                  if (!consented) {
-                    setError("יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.");
-                    return;
-                  }
+                  if (!requireConsent()) return;
                   setError(null);
                   setStep("phone");
                 }}
                 onEmail={() => {
-                  if (!consented) {
-                    setError("יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.");
-                    return;
-                  }
+                  if (!requireConsent()) return;
                   setError(null);
                   setEmailMode("signup");
                   setStep("email");
@@ -319,6 +331,7 @@ function SignupPageInner() {
               otpSent={otpSent}
               sendOtp={sendOtp}
               verifyOtp={verifyOtp}
+              onResend={sendOtp}
               onBack={() => {
                 setStep("choose");
                 setOtpSent(false);
@@ -387,16 +400,24 @@ function SignupPageInner() {
 function ChooseStep({
   cloudEnabled,
   providers,
+  consented,
   onProvider,
   onPhone,
   onEmail,
 }: {
   cloudEnabled: boolean;
   providers: { google: boolean; apple: boolean; phone: boolean; loaded: boolean };
+  consented: boolean;
   onProvider: (m: "google" | "apple") => void;
   onPhone: () => void;
   onEmail: () => void;
 }) {
+  // R18 §1B — visual "gated" state. We keep the buttons clickable (a
+  // truly `disabled` button swallows the click and the consent pulse
+  // would never fire), but dim them + show aria-disabled so it's clear
+  // they're not actionable until the box is ticked.
+  const gated = !consented;
+  const gatedCls = gated ? "opacity-45" : "";
   // In local mode (no Supabase configured) every button hits the local
   // fallback path — they all "work" by stamping a UUID into localStorage.
   // The provider probe is irrelevant; force-enable everything.
@@ -437,7 +458,8 @@ function ChooseStep({
           <>
             <button
               onClick={onEmail}
-              className="w-full btn-gold inline-flex items-center justify-center gap-2"
+              aria-disabled={gated}
+              className={`w-full btn-gold inline-flex items-center justify-center gap-2 ${gatedCls}`}
             >
               <Mail size={18} />
               המשך עם מייל וסיסמה
@@ -454,7 +476,8 @@ function ChooseStep({
         <button
           onClick={() => onProvider("google")}
           disabled={!googleOn}
-          className="w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/15 disabled:hover:bg-transparent"
+          aria-disabled={gated}
+          className={`w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/15 disabled:hover:bg-transparent ${gatedCls}`}
         >
           <GoogleIcon />
           <span className="font-semibold">המשך עם Google</span>
@@ -467,7 +490,8 @@ function ChooseStep({
         <button
           onClick={() => onProvider("apple")}
           disabled={!appleOn}
-          className="w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/15 disabled:hover:bg-transparent"
+          aria-disabled={gated}
+          className={`w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/15 disabled:hover:bg-transparent ${gatedCls}`}
         >
           <AppleIcon />
           <span className="font-semibold">המשך עם Apple</span>
@@ -481,7 +505,8 @@ function ChooseStep({
         <button
           onClick={onPhone}
           disabled={!phoneOn}
-          className="w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/15 disabled:hover:bg-transparent"
+          aria-disabled={gated}
+          className={`w-full rounded-2xl border border-white/15 hover:border-white/25 hover:bg-white/[0.04] py-3.5 px-5 inline-flex items-center justify-center gap-3 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-white/15 disabled:hover:bg-transparent ${gatedCls}`}
         >
           <Phone size={18} />
           <span className="font-semibold">המשך עם מספר טלפון</span>
@@ -632,7 +657,12 @@ function EmailStep({
               separate "טוען..." row below. Stops the page from jumping when
               the submit fires; matches the pattern in /manage/accept. */}
           {busy ? (
-            <Loader2 className="animate-spin" size={16} aria-hidden />
+            /* R18 §O — explicit "מתחבר..." label, not just a bare spinner,
+               so the user knows the click registered. */
+            <>
+              <Loader2 className="animate-spin" size={16} aria-hidden />
+              מתחבר...
+            </>
           ) : (
             <>
               {isSignup ? "הירשם" : "התחבר"}
@@ -778,6 +808,7 @@ function PhoneStep({
   otpSent,
   sendOtp,
   verifyOtp,
+  onResend,
   onBack,
 }: {
   identifier: string;
@@ -787,8 +818,48 @@ function PhoneStep({
   otpSent: boolean;
   sendOtp: () => void;
   verifyOtp: () => void;
+  onResend: () => void;
   onBack: () => void;
 }) {
+  // R18 §1A — resend + countdown, mirroring EmailConfirmationStep. The
+  // cooldown starts the moment a code is first sent (otpSent → true) and
+  // re-arms after every resend. 30s matches the SMS-gateway soft limit.
+  const [cooldownLeft, setCooldownLeft] = useState(0);
+  const [resending, setResending] = useState(false);
+
+  useEffect(() => {
+    // Documented "sync to external trigger" pattern: the cooldown starts
+    // exactly when the parent flips otpSent → true. Synchronous setState
+    // here is intentional and one-shot.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (otpSent) setCooldownLeft(30);
+  }, [otpSent]);
+
+  useEffect(() => {
+    if (cooldownLeft <= 0) return;
+    const id = window.setInterval(() => {
+      setCooldownLeft((n) => Math.max(0, n - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [cooldownLeft]);
+
+  const handleResend = () => {
+    if (cooldownLeft > 0 || resending) return;
+    setResending(true);
+    onResend();
+    // The parent re-runs sendOtp; otpSent stays true so the effect above
+    // won't re-fire. Re-arm the cooldown here instead.
+    setCooldownLeft(30);
+    window.setTimeout(() => setResending(false), 1200);
+  };
+
+  const resendDisabled = cooldownLeft > 0 || resending;
+  const resendLabel = resending
+    ? "שולח..."
+    : cooldownLeft > 0
+      ? `לא הגיע? שלח שוב תוך ${cooldownLeft}s`
+      : "שלח קוד שוב";
+
   return (
     <div className="card-gold p-7 md:p-8 fade-up">
       <div className="text-center">
@@ -845,6 +916,18 @@ function PhoneStep({
             <button onClick={verifyOtp} disabled={otp.length < 4} className="w-full btn-gold disabled:opacity-40 inline-flex items-center justify-center gap-2">
               אמת והמשך
               <CheckCircle2 size={18} />
+            </button>
+
+            {/* R18 §1A — resend control with live countdown. */}
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resendDisabled}
+              className="w-full text-sm py-2.5 inline-flex items-center justify-center gap-2 transition disabled:opacity-45 disabled:cursor-not-allowed"
+              style={{ color: resendDisabled ? "var(--foreground-muted)" : "var(--accent)" }}
+            >
+              {resending && <Loader2 className="animate-spin" size={14} aria-hidden />}
+              {resendLabel}
             </button>
           </>
         )}

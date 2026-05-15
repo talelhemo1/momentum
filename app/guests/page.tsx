@@ -7,18 +7,19 @@ import { Header } from "@/components/Header";
 import { EmptyEventState } from "@/components/EmptyEventState";
 import { PrintButton } from "@/components/PrintButton";
 import { useAppState, actions, mintMissingRsvpTokens } from "@/lib/store";
+import { formatEventDate } from "@/lib/format";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useUser } from "@/lib/user";
 import { buildHostInvitationWhatsappLink } from "@/lib/invitation";
 import { tryGetPublicOrigin } from "@/lib/origin";
 import { buildWhatsAppMessage } from "@/lib/rsvpLinks";
-import { useGuestWhatsappLink } from "@/hooks/useGuestWhatsappLink";
+import { useGuestWhatsappLink, prewarmGuestWhatsappLinks } from "@/hooks/useGuestWhatsappLink";
 import { trackEvent } from "@/lib/analytics";
 import { subscribeRsvpUpdates, type RsvpUpdate } from "@/lib/rsvpSync";
 import { showToast } from "@/components/Toast";
 import { fireConfettiOnce } from "@/lib/confetti";
 import { GuestsSkeleton } from "@/components/skeletons/PageSkeletons";
 import { Avatar } from "@/components/Avatar";
-import { EmptyState } from "@/components/EmptyState";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   GUEST_AGE_GROUP_LABELS,
@@ -47,6 +48,7 @@ import {
   BookUser,
   Download,
   RefreshCw,
+  X,
 } from "lucide-react";
 
 const STATUS_LABEL: Record<GuestStatus, string> = {
@@ -79,6 +81,44 @@ function GuestsPageInner() {
   const [search, setSearch] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  // R18 §F — paste-list fallback for browsers without the Contacts API
+  // (notably Safari iOS, which is most of our mobile traffic).
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const contactsSupported =
+    typeof navigator !== "undefined" &&
+    "contacts" in navigator &&
+    // @ts-expect-error — Contacts API isn't in the TS lib yet
+    typeof navigator.contacts?.select === "function";
+
+  const handlePasteImport = () => {
+    // Accept "name, phone" / "name<tab>phone" / "name phone" per line.
+    const lines = pasteText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const existingPhones = new Set(
+      state.guests.map((g) => g.phone.replace(/\D/g, "")),
+    );
+    let added = 0;
+    for (const line of lines) {
+      const m = /^(.+?)[\s,\t]+([+\d][\d\s-]{6,})$/.exec(line);
+      const name = (m ? m[1] : line).trim();
+      const phoneRaw = m ? m[2].trim() : "";
+      const phoneDigits = phoneRaw.replace(/\D/g, "");
+      if (!name) continue;
+      if (phoneDigits && existingPhones.has(phoneDigits)) continue;
+      actions.addGuest({ name, phone: phoneRaw });
+      if (phoneDigits) existingPhones.add(phoneDigits);
+      added += 1;
+    }
+    setImportMsg(
+      added > 0 ? `נוספו ${added} מוזמנים מהרשימה` : "לא זוהו מוזמנים חדשים",
+    );
+    setTimeout(() => setImportMsg(null), 4000);
+    setPasteText("");
+    setPasteOpen(false);
+  };
 
   const importFromContacts = async () => {
     type ContactPickerNavigator = Navigator & {
@@ -192,6 +232,17 @@ function GuestsPageInner() {
       return true;
     });
   }, [state.guests, filter, search]);
+
+  // R18 §Q — pre-warm WhatsApp links so the per-row buttons resolve from
+  // cache instantly. Small events: warm everyone. Big events: just the
+  // first screenful (the rest warm lazily as rows mount / scroll).
+  useEffect(() => {
+    if (!state.event) return;
+    const origin = tryGetPublicOrigin();
+    const all = state.guests;
+    const batch = all.length < 30 ? all : all.slice(0, 20);
+    prewarmGuestWhatsappLinks(origin, state.event, batch);
+  }, [state.event, state.guests]);
 
   const stats = useMemo(() => {
     const confirmed = state.guests.filter((g) => g.status === "confirmed");
@@ -349,12 +400,83 @@ function GuestsPageInner() {
           <div className="mt-6 space-y-3">
             {filtered.length === 0 && (
               state.guests.length === 0 ? (
-                <EmptyState
-                  icon={<Users size={28} aria-hidden />}
-                  title="עדיין לא הוספת מוזמנים"
-                  description="הוסף את האורח הראשון, או ייבא מאנשי הקשר של הטלפון. כל אורח מקבל קישור RSVP אישי חתום HMAC."
-                  secondary={{ label: "הוסף מוזמן ראשון", onClick: () => setShowAdd(true) }}
-                />
+                /* R18 §F — import-first empty state. Primary CTA is the
+                   contacts importer (30s → 50+ guests); manual add is
+                   the secondary. Browsers w/o the Contacts API get a
+                   paste-list textarea instead. */
+                <div className="card-gold p-8 md:p-10 text-center" role="status">
+                  <div
+                    aria-hidden
+                    className="inline-flex w-16 h-16 rounded-2xl items-center justify-center mb-3"
+                    style={{ background: "var(--surface-2)", color: "var(--accent)", border: "1px solid var(--border)" }}
+                  >
+                    <Users size={28} />
+                  </div>
+                  <h3 className="text-lg md:text-xl font-extrabold tracking-tight gradient-gold">
+                    עדיין לא הוספת מוזמנים
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed max-w-md mx-auto" style={{ color: "var(--foreground-soft)" }}>
+                    ב-30 שניות תוכל לייבא 50+ מוזמנים מהטלפון שלך. כל אורח מקבל
+                    קישור RSVP אישי חתום HMAC.
+                  </p>
+
+                  <div className="mt-6 flex flex-col items-center gap-3 max-w-xs mx-auto">
+                    {contactsSupported ? (
+                      <button
+                        type="button"
+                        onClick={importFromContacts}
+                        disabled={importBusy}
+                        className="btn-gold w-full py-3.5 text-base inline-flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        📱 {importBusy ? "מייבא..." : "ייבא מאנשי קשר"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPasteOpen((v) => !v)}
+                        className="btn-gold w-full py-3.5 text-base inline-flex items-center justify-center gap-2"
+                      >
+                        📋 הדבק רשימת מוזמנים
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowAdd(true)}
+                      className="btn-secondary w-full"
+                    >
+                      + הוסיף ידנית
+                    </button>
+                  </div>
+
+                  {pasteOpen && (
+                    <div className="mt-5 max-w-sm mx-auto text-start">
+                      <label className="block text-xs mb-1.5" style={{ color: "var(--foreground-soft)" }}>
+                        שורה לכל מוזמן: <span className="ltr-num">שם, 050-1234567</span>
+                      </label>
+                      <textarea
+                        value={pasteText}
+                        onChange={(e) => setPasteText(e.target.value)}
+                        rows={5}
+                        className="input w-full text-sm"
+                        placeholder={"דנה כהן, 0501234567\nיוסי לוי, 0529876543"}
+                      />
+                      <button
+                        type="button"
+                        onClick={handlePasteImport}
+                        disabled={!pasteText.trim()}
+                        className="btn-gold mt-2 w-full py-2.5 text-sm disabled:opacity-50"
+                      >
+                        ייבא {pasteText.split(/\r?\n/).filter((l) => l.trim()).length || ""} מוזמנים
+                      </button>
+                    </div>
+                  )}
+
+                  {importMsg && (
+                    <p className="mt-4 text-xs" style={{ color: "var(--accent)" }}>
+                      {importMsg}
+                    </p>
+                  )}
+                </div>
               ) : (
                 <div
                   className="card p-10 text-center"
@@ -365,14 +487,24 @@ function GuestsPageInner() {
                 </div>
               )
             )}
-            {filtered.map((guest) => (
-              <GuestRow
-                key={guest.id}
-                guest={guest}
+            {/* R18 §K — virtualize only large lists. Small events keep the
+                plain map (simpler, no scroll container, no measurement). */}
+            {filtered.length > 80 ? (
+              <VirtualGuestList
+                guests={filtered}
                 event={state.event!}
-                glow={recentlyChanged?.id === guest.id ? recentlyChanged.at : undefined}
+                recentlyChanged={recentlyChanged}
               />
-            ))}
+            ) : (
+              filtered.map((guest) => (
+                <GuestRow
+                  key={guest.id}
+                  guest={guest}
+                  event={state.event!}
+                  glow={recentlyChanged?.id === guest.id ? recentlyChanged.at : undefined}
+                />
+              ))
+            )}
           </div>
         </div>
 
@@ -428,6 +560,67 @@ function FilterTabs({
           {t.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * R18 §K — windowed guest list for big events (>80 guests). Rows are
+ * absolutely positioned inside a scroll container; @tanstack/react-virtual
+ * measures real heights (GuestRow expands when opened) via measureElement.
+ */
+function VirtualGuestList({
+  guests,
+  event,
+  recentlyChanged,
+}: {
+  guests: Guest[];
+  event: import("@/lib/types").EventInfo;
+  recentlyChanged: { id: string; at: number } | null;
+}) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virt = useVirtualizer({
+    count: guests.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 116,
+    overscan: 6,
+  });
+  return (
+    <div
+      ref={parentRef}
+      className="-mx-1 px-1"
+      style={{ maxHeight: "70vh", overflowY: "auto" }}
+    >
+      <div style={{ height: virt.getTotalSize(), position: "relative" }}>
+        {virt.getVirtualItems().map((vi) => {
+          const guest = guests[vi.index];
+          return (
+            <div
+              key={guest.id}
+              data-index={vi.index}
+              ref={virt.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                insetInlineStart: 0,
+                width: "100%",
+                transform: `translateY(${vi.start}px)`,
+                paddingBottom: 12,
+              }}
+            >
+              <GuestRow
+                guest={guest}
+                event={event}
+                glow={
+                  recentlyChanged?.id === guest.id
+                    ? recentlyChanged.at
+                    : undefined
+                }
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -551,11 +744,13 @@ function GuestRow({
           {/* WhatsApp + details — secondary, compact */}
           <button
             onClick={onSendWhatsapp}
-            // Only disable on missing phone. We INTENTIONALLY allow clicks
-            // while !whatsappUrl so the click handler runs and shows the
-            // "מכין את הקישור" toast instead of the user staring at a
-            // grayed-out button that ignores them.
-            disabled={!guest.phone}
+            // R18 §Q — disable until the link is actually ready (not just
+            // a spinner). Pre-warming (prewarmGuestWhatsappLinks on the
+            // page) makes the not-ready window near-instant, so the old
+            // concern about a "grayed-out button that ignores you" no
+            // longer applies — by the time the user reaches a row its
+            // link is almost always already cached.
+            disabled={!guest.phone || !whatsappUrl}
             title={
               !guest.phone
                 ? "הוסף מספר טלפון כדי לשלוח"
@@ -589,7 +784,8 @@ function GuestRow({
           <div className="sm:hidden flex flex-col gap-2">
             <button
               onClick={onSendWhatsapp}
-              disabled={!guest.phone}
+              // R18 §Q — disabled until link ready (see compact button above).
+              disabled={!guest.phone || !whatsappUrl}
               title={
                 !guest.phone
                   ? "הוסף מספר טלפון לאורח כדי לשלוח בוואטסאפ"
@@ -759,10 +955,22 @@ function AddGuestModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div className="card glass-strong p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2">
-          <Users size={20} className="text-[--accent]" />
-          <h3 className="text-xl font-bold">מוזמן חדש</h3>
+      <div className="card glass-strong p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Users size={20} className="text-[--accent]" />
+            <h3 className="text-xl font-bold">מוזמן חדש</h3>
+          </div>
+          {/* R18 §P — consistent 44×44 close affordance (was absent here;
+              modal previously closed only via Esc / click-outside / ביטול). */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="סגור"
+            className="w-11 h-11 -m-2 flex items-center justify-center rounded-full hover:bg-[var(--secondary-button-bg)] transition"
+          >
+            <X size={18} aria-hidden />
+          </button>
         </div>
         <div className="mt-5 space-y-4">
           <div>
@@ -885,6 +1093,18 @@ function BulkInviteModal({
 }) {
   const [index, setIndex] = useState(0);
   const [opened, setOpened] = useState<Set<string>>(new Set());
+  // R18 §1E — auto-advance after the user returns from WhatsApp. Opt-out
+  // persisted so power users who want manual control set it once.
+  const AUTO_ADV_KEY = "momentum.bulk_auto_advance.v1";
+  const [autoAdvance, setAutoAdvance] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return window.localStorage.getItem(AUTO_ADV_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const wentHiddenRef = useRef(false);
   const origin = tryGetPublicOrigin();
   // Telemetry: stamp the start of a bulk session and the completion. Lives in
   // localStorage via trackEvent so the host can later see how long the bulk run took.
@@ -928,6 +1148,48 @@ function BulkInviteModal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // R18 §1E — auto-advance. When the user opens WhatsApp the tab goes
+  // hidden; when they come back (visible) AND the current guest's link
+  // was actually opened, wait 2s (in case they're still finishing up)
+  // then move to the next guest automatically.
+  const currentId = current?.id ?? null;
+  const currentOpened = currentId ? opened.has(currentId) : false;
+  useEffect(() => {
+    if (!autoAdvance || !currentOpened) return;
+    let timer: number | null = null;
+    const onVis = () => {
+      if (document.visibilityState === "hidden") {
+        wentHiddenRef.current = true;
+      } else if (
+        document.visibilityState === "visible" &&
+        wentHiddenRef.current
+      ) {
+        wentHiddenRef.current = false;
+        timer = window.setTimeout(() => {
+          lastOpenedRef.current = null;
+          setIndex((i) => i + 1);
+        }, 2000);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [autoAdvance, currentOpened, currentId]);
+
+  const toggleAutoAdvance = () => {
+    setAutoAdvance((v) => {
+      const next = !v;
+      try {
+        window.localStorage.setItem(AUTO_ADV_KEY, next ? "1" : "0");
+      } catch {
+        /* private mode — in-memory only */
+      }
+      return next;
+    });
+  };
 
   if (!current) {
     // Queue exhausted — show a "all done" panel before letting the user close.
@@ -982,8 +1244,9 @@ function BulkInviteModal({
               נפתח לך את הצ׳אט עם כל אורח בנפרד — שולחים, חוזרים לכאן, ולוחצים &quot;הבא&quot;.
             </p>
           </div>
-          <button onClick={onClose} aria-label="סגור" className="rounded-full w-8 h-8 flex items-center justify-center hover:bg-[var(--secondary-button-bg)]">
-            <span style={{ color: "var(--foreground-muted)" }}>×</span>
+          {/* R18 §P — bumped 32→44px to match AddGuestModal + WCAG touch. */}
+          <button onClick={onClose} aria-label="סגור" className="rounded-full w-11 h-11 flex items-center justify-center hover:bg-[var(--secondary-button-bg)]">
+            <X size={18} aria-hidden style={{ color: "var(--foreground-muted)" }} />
           </button>
         </header>
 
@@ -1067,8 +1330,21 @@ function BulkInviteModal({
             </div>
 
             <p className="text-xs text-center mt-1" style={{ color: "var(--foreground-muted)" }}>
-              💡 לחץ על &quot;פתח&quot;, שלח את ההודעה, חזור לטאב הזה, ולחץ &quot;הבא&quot;.
+              💡 לחץ על &quot;פתח&quot;, שלח את ההודעה, חזור לטאב הזה
+              {autoAdvance ? " — נעבור אוטומטית למוזמן הבא" : ', ולחץ "הבא"'}.
             </p>
+            {/* R18 §1E — auto-advance opt-out. */}
+            <button
+              type="button"
+              onClick={toggleAutoAdvance}
+              className="text-[11px] mx-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full transition"
+              style={{
+                color: "var(--foreground-muted)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              {autoAdvance ? "השבת מעבר אוטומטי" : "הפעל מעבר אוטומטי"}
+            </button>
           </div>
 
           {/* Reference: text preview so the host knows what's being sent */}
@@ -1279,7 +1555,7 @@ function exportGuestsCsv(guests: Guest[], event: import("@/lib/types").EventInfo
         String(g.attendingCount ?? 1),
         g.side === "bride" ? "כלה" : g.side === "groom" ? "חתן" : g.side === "shared" ? "משותף" : "",
         g.notes ?? "",
-        g.respondedAt ? new Date(g.respondedAt).toLocaleDateString("he-IL") : "",
+        g.respondedAt ? formatEventDate(g.respondedAt, "short") : "",
       ].map(csvQuote).join(","),
     ),
   ].join("\n");

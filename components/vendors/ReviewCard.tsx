@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ThumbsUp, ShieldCheck, Calendar } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
+import { formatEventDate } from "@/lib/format";
 import { showToast } from "@/components/Toast";
 import {
   RECOMMEND_TAGS,
@@ -224,7 +225,7 @@ export function ReviewCard({
           className="text-[10px]"
           style={{ color: "var(--foreground-muted)" }}
         >
-          {new Date(review.created_at).toLocaleDateString("he-IL")}
+          {formatEventDate(review.created_at, "short")}
         </span>
       </footer>
     </article>

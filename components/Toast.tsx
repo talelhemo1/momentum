@@ -62,7 +62,7 @@ export function ToastHost() {
       // bottom-spacing: above MobileBottomNav (~58px + safe-area) on mobile
       // since the nav is rendered on the same routes the toast is shown.
       // Desktop: 1.5rem from bottom is plenty.
-      className="fixed inset-x-0 mx-auto z-[100] flex flex-col items-center gap-2 px-4 pointer-events-none no-print bottom-[calc(80px+env(safe-area-inset-bottom))] md:bottom-6"
+      className="fixed inset-x-0 mx-auto z-[100] flex flex-col items-center gap-2 px-4 pointer-events-none no-print bottom-[calc(96px+env(safe-area-inset-bottom))] md:bottom-6"
       role="status"
       aria-live="polite"
     >

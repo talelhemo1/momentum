@@ -63,6 +63,36 @@ async function buildLink(origin: string, event: EventInfo, guest: Guest): Promis
   return { whatsappUrl: url, rsvpUrl };
 }
 
+/**
+ * R18 §Q — eager pre-warm. Seeds the module Promise cache for a batch of
+ * guests so the per-row hooks resolve instantly (cache hit) instead of
+ * each kicking off its own HMAC after mount. Callers decide the batch:
+ * the whole list for small events, the first screen-worth for big ones.
+ * Cheap + idempotent — an already-cached key is skipped.
+ */
+export function prewarmGuestWhatsappLinks(
+  origin: string,
+  event: EventInfo | null | undefined,
+  guests: Guest[],
+): void {
+  if (!event) return;
+  if (!origin || !/^https?:\/\//i.test(origin)) return;
+  for (const guest of guests) {
+    const key = cacheKeyFor(origin, event.id, guest.id, guest.rsvpToken);
+    if (linkCache.has(key)) continue;
+    const promise = new Promise<BuiltLink>((resolve, reject) => {
+      queueMicrotask(() => {
+        buildLink(origin, event, guest).then(resolve, reject);
+      });
+    });
+    // Drop poisoned entries so a later real render can retry.
+    promise.catch(() => {
+      if (linkCache.get(key) === promise) linkCache.delete(key);
+    });
+    linkCache.set(key, promise);
+  }
+}
+
 export interface UseGuestWhatsappLinkResult {
   /** Pre-encoded `https://wa.me/...` URL with the invitation body, or "" until ready. */
   whatsappUrl: string;

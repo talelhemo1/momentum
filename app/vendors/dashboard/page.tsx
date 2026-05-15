@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   Sparkles,
   CheckCircle2,
+  Copy,
   CreditCard,
   TrendingUp,
   User,
@@ -24,6 +25,9 @@ import { getSupabase } from "@/lib/supabase";
 import { Logo } from "@/components/Logo";
 import { EmptyState } from "@/components/EmptyState";
 import { VendorNav } from "@/components/vendors/VendorNav";
+import { QrCanvas } from "@/components/QrCanvas";
+import { tryGetPublicOrigin } from "@/lib/origin";
+import { useNow } from "@/lib/useNow";
 import { useVendorContext } from "@/lib/useVendorContext";
 import type {
   VendorLandingData,
@@ -115,6 +119,11 @@ export default function VendorDashboardPage() {
   // Differentiate "not signed in" from "signed in but no vendor profile"
   // — the two need different CTAs and the hook doesn't tell us which.
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  // R18 §I — "link copied" feedback for the fresh-vendor onboarding card.
+  const [linkCopied, setLinkCopied] = useState(false);
+  // React 19 purity: Date.now() can't be called during render. Single
+  // "now" snapshot via the shared hook (null on first/SSR render).
+  const nowMs = useNow(null);
 
   // React 19 compiler is strict about derived-prop dependencies. Pull
   // the strings we read into stable locals so the dep array matches.
@@ -349,6 +358,33 @@ export default function VendorDashboardPage() {
 
   const completeness = computeCompleteness(vendorLanding);
 
+  // R18 §I — fresh-vendor onboarding state. A brand-new profile with no
+  // traffic yet shouldn't look "broken" (all-zero metrics) — explain
+  // that views take ~48h and hand them tools to drive their own.
+  const profileAgeDays = (() => {
+    if (nowMs == null) return 999; // not resolved yet → don't flash banner
+    const t = new Date(vendorLanding.created_at).getTime();
+    if (Number.isNaN(t)) return 999;
+    return (nowMs - t) / 86_400_000;
+  })();
+  const isFreshVendor =
+    metrics.views7d === 0 &&
+    metrics.activeLeads === 0 &&
+    profileAgeDays < 7;
+  const publicUrl = vendorLanding.slug
+    ? `${tryGetPublicOrigin()}/vendor/${vendorLanding.slug}`
+    : "";
+  const copyPublicLink = async () => {
+    if (!publicUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 2500);
+    } catch {
+      /* clipboard blocked — the link is visible to copy manually */
+    }
+  };
+
   return (
     <main
       className="min-h-screen pb-24 md:pb-20 md:pe-64"
@@ -384,6 +420,57 @@ export default function VendorDashboardPage() {
       </header>
 
       <div className="max-w-5xl mx-auto px-5 pt-6 space-y-6">
+        {/* R18 §I — fresh-vendor onboarding banner. */}
+        {isFreshVendor && publicUrl && (
+          <section
+            className="card-gold p-6"
+            style={{ border: "1px solid var(--border-gold)" }}
+          >
+            <div className="flex flex-col md:flex-row md:items-center gap-6">
+              <div className="flex-1">
+                <div className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-full mb-3" style={{ background: "rgba(212,176,104,0.12)", color: "var(--accent)" }}>
+                  <Sparkles size={12} aria-hidden /> הפרופיל שלך חי
+                </div>
+                <h2 className="text-lg font-bold">
+                  צפיות ראשונות מגיעות בדרך כלל תוך 48 שעות
+                </h2>
+                <p className="mt-2 text-sm" style={{ color: "var(--foreground-soft)" }}>
+                  הקטלוג עדיין מאנדקס את הפרופיל. בינתיים — שתף את הקישור
+                  הישיר כדי להאיץ את התנועה הראשונה.
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={copyPublicLink}
+                    className="btn-gold inline-flex items-center gap-2 text-sm px-4 py-2"
+                  >
+                    {linkCopied ? (
+                      <><CheckCircle2 size={14} aria-hidden /> הקישור הועתק</>
+                    ) : (
+                      <><Copy size={14} aria-hidden /> העתק קישור</>
+                    )}
+                  </button>
+                  <a
+                    href={publicUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs underline"
+                    style={{ color: "var(--foreground-muted)" }}
+                  >
+                    {publicUrl}
+                  </a>
+                </div>
+                <p className="mt-3 text-xs" style={{ color: "var(--foreground-muted)" }}>
+                  💡 טיפ: שתף את הקישור בסטורי באינסטגרם להאצת התנועה
+                </p>
+              </div>
+              <div className="shrink-0 mx-auto md:mx-0">
+                <QrCanvas value={publicUrl} size={148} />
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* 4 metric cards */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricCard

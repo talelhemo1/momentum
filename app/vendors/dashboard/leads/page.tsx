@@ -19,6 +19,7 @@ import { Logo } from "@/components/Logo";
 import { EmptyState } from "@/components/EmptyState";
 import { showToast } from "@/components/Toast";
 import { VendorNav } from "@/components/vendors/VendorNav";
+import { MoneyInput } from "@/components/inputs/MoneyInput";
 import { useVendorContext } from "@/lib/useVendorContext";
 import {
   VENDOR_LEAD_STATUS_LABELS,
@@ -443,15 +444,10 @@ function QuoteModal({
         <div className="space-y-3">
           <label className="block">
             <span className="text-xs block mb-1.5" style={{ color: "var(--foreground-soft)" }}>
-              סכום (₪)
+              סכום
             </span>
-            <input
-              dir="ltr"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="input text-start ltr-num"
-              placeholder="12,500"
-            />
+            {/* R18 §L — shared MoneyInput (fixed ₪ chip + comma parser). */}
+            <MoneyInput value={amount} onChange={setAmount} ariaLabel="סכום ההצעה בשקלים" />
           </label>
           <label className="block">
             <span className="text-xs block mb-1.5" style={{ color: "var(--foreground-soft)" }}>

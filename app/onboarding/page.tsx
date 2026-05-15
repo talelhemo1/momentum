@@ -131,6 +131,23 @@ function OnboardingInner() {
       if (state.event.guardianConsent) setGuardianConsent(true);
     } else if (user?.method === "phone" && user.identifier) {
       setHostPhone(user.identifier);
+    } else if (user && (user.method === "google" || user.method === "email")) {
+      // R18 §1C — Google/email signups don't carry a phone in the local
+      // profile. Try the Supabase auth user (some providers expose a
+      // verified phone). Fire-and-forget; if it returns nothing the
+      // field stays empty and is flagged required in the UI below.
+      void (async () => {
+        try {
+          const { getSupabase } = await import("@/lib/supabase");
+          const supabase = getSupabase();
+          if (!supabase) return;
+          const { data } = await supabase.auth.getUser();
+          const ph = data.user?.phone;
+          if (ph) setHostPhone((cur) => cur || ph);
+        } catch {
+          // Soft failure — the field just stays empty + required.
+        }
+      })();
     }
     setPrefilled(true);
     // R12 §3O — depend on event.id only. The prefill is a one-shot
@@ -443,7 +460,8 @@ function Step1({
             )}
             <div className="sm:col-span-2">
               <label className="block text-sm mb-2" style={{ color: "var(--foreground-soft)" }}>
-                הטלפון שלך לקבלת אישורי הגעה <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>(נדרש כדי שאורחים יוכלו להחזיר תשובה לוואטסאפ שלך)</span>
+                הטלפון שלך לקבלת אישורי הגעה{" "}
+                <span aria-hidden style={{ color: "rgb(248,113,113)" }}>*</span>
               </label>
               <input
                 dir="ltr"
@@ -451,7 +469,20 @@ function Step1({
                 placeholder="050-1234567"
                 value={hostPhone}
                 onChange={(e) => setHostPhone(e.target.value)}
+                aria-required
               />
+              {/* R18 §1C — explicit consequence text instead of a vague
+                  "(required)" so the user understands WHY it matters. */}
+              <p
+                className="mt-1.5 text-xs"
+                style={{
+                  color: hostPhone.trim()
+                    ? "var(--foreground-muted)"
+                    : "rgb(248,113,113)",
+                }}
+              >
+                ללא טלפון אורחים לא יוכלו לאשר הגעה
+              </p>
             </div>
           </div>
 
@@ -531,14 +562,14 @@ function HebrewDateField({
   }, [date]);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
-  // Whenever all three are filled and form a valid date, push the ISO
-  // string up. Invalid combos (Feb 31, etc.) clear the parent so canNext
-  // gates the user until they fix it.
+  // R18 §1D — push the ISO string up ONLY when all three fields form a
+  // valid (and not-in-the-past) date. Previously this effect *cleared*
+  // the parent on every incomplete/invalid keystroke, which wiped a
+  // perfectly good date the moment the user touched a digit to edit it.
+  // Now we keep the last valid value and simply DON'T push until the new
+  // input is itself valid — non-destructive editing.
   useEffect(() => {
-    if (!day || !month || !year) {
-      if (date !== "") setDate("");
-      return;
-    }
+    if (!day || !month || !year) return;
     const dNum = Number(day);
     const moNum = Number(month);
     const yNum = Number(year);
@@ -554,21 +585,31 @@ function HebrewDateField({
       probe.getMonth() !== moNum - 1 ||
       probe.getDate() !== dNum
     ) {
-      if (date !== "") setDate("");
       return;
     }
     if (minToday) {
       const todayMidnight = new Date();
       todayMidnight.setHours(0, 0, 0, 0);
-      if (probe.getTime() < todayMidnight.getTime()) {
-        if (date !== "") setDate("");
-        return;
-      }
+      if (probe.getTime() < todayMidnight.getTime()) return;
     }
     const iso = `${String(yNum).padStart(4, "0")}-${String(moNum).padStart(2, "0")}-${String(dNum).padStart(2, "0")}`;
     if (iso !== date) setDate(iso);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [day, month, year, minToday]);
+
+  // R18 §1D — native picker is now the primary affordance; the 3-field
+  // manual entry is opt-in behind "או הקלד ידנית".
+  const [showManual, setShowManual] = useState(false);
+  const todayIso = (() => {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+  })();
+  const onNativeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value; // already YYYY-MM-DD or ""
+    if (!v) return; // don't wipe a good value if they clear the native field
+    if (minToday && v < todayIso) return;
+    setDate(v);
+  };
 
   // Refs for focus jumping (day → month → year, RTL).
   const monthRef = useRef<HTMLInputElement>(null);
@@ -599,7 +640,29 @@ function HebrewDateField({
   };
 
   return (
-    <div className="grid grid-cols-3 gap-2" dir="rtl">
+    <div>
+      {/* R18 §1D — native date picker first (most users just want the
+          calendar). Manual day/month/year stays available below. */}
+      <input
+        type="date"
+        dir="ltr"
+        className="input text-start w-full text-lg"
+        min={minToday ? todayIso : undefined}
+        value={date}
+        onChange={onNativeChange}
+        aria-label="תאריך האירוע"
+      />
+      <button
+        type="button"
+        onClick={() => setShowManual((v) => !v)}
+        className="mt-3 text-xs underline"
+        style={{ color: "var(--foreground-muted)" }}
+      >
+        {showManual ? "הסתר הקלדה ידנית" : "או הקלד ידנית"}
+      </button>
+
+      {showManual && (
+    <div className="grid grid-cols-3 gap-2 mt-3" dir="rtl">
       <label className="block">
         <span className="block text-xs text-center mb-1.5" style={{ color: "var(--foreground-muted)" }}>
           יום
@@ -650,6 +713,8 @@ function HebrewDateField({
           onChange={onYearChange}
         />
       </label>
+    </div>
+      )}
     </div>
   );
 }

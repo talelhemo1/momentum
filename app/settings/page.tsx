@@ -12,6 +12,7 @@ import { eventSlots } from "@/lib/eventSlots";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
 import { generateSigningKey } from "@/lib/crypto";
 import { deleteCloudData } from "@/lib/sync";
+import { formatEventDate } from "@/lib/format";
 import { showToast } from "@/components/Toast";
 import {
   ArrowRight,
@@ -257,7 +258,7 @@ export default function SettingsPage() {
               <Row label="שם" value={user.name} />
               <Row label="זהות" value={user.identifier} mono />
               <Row label="שיטת התחברות" value={user.method === "google" ? "Google" : user.method === "apple" ? "Apple" : "טלפון"} />
-              <Row label="תאריך הצטרפות" value={new Date(user.createdAt).toLocaleDateString("he-IL")} />
+              <Row label="תאריך הצטרפות" value={formatEventDate(user.createdAt, "short")} />
             </Section>
 
             {/* Subscription */}

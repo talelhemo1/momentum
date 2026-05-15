@@ -43,9 +43,31 @@ export default function VendorJoinPage() {
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // R18 §G — 3-step wizard. Splitting the 13-field wall into bite-size
+  // steps roughly tripled completion in the brief's intent.
+  const [step, setStep] = useState<1 | 2 | 3>(1);
 
   const set = <K extends keyof FormData>(k: K, v: FormData[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  // Per-step required fields — the "Next" button stays disabled until
+  // the current step's mandatory fields are filled.
+  const stepValid = (s: 1 | 2 | 3): boolean => {
+    if (s === 1)
+      return !!form.business_name && !!form.contact_name && !!form.category;
+    if (s === 2) return !!form.phone && !!form.email;
+    return (
+      !!form.business_id && !!form.years_in_field && !!form.sample_work_url
+    );
+  };
+  const goNext = () => {
+    if (!stepValid(step)) {
+      showToast("יש למלא את שדות החובה בשלב זה", "error");
+      return;
+    }
+    setStep((s) => (s < 3 ? ((s + 1) as 1 | 2 | 3) : s));
+  };
+  const goPrev = () => setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,50 +145,96 @@ export default function VendorJoinPage() {
           <p className="mt-2 text-sm" style={{ color: "var(--foreground-soft)" }}>
             ספק אירועים? הוסיפו את העסק שלכם לקטלוג. ההצטרפות חינם, אישור תוך 1-3 ימי עסקים.
           </p>
+          {/* R18 §G — speed badge to lower the perceived effort. */}
+          <span className="mt-3 inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full" style={{ background: "rgba(212,176,104,0.12)", border: "1px solid var(--border-gold)", color: "var(--accent)" }}>
+            ⚡ טופס מהיר — 60 שניות בלבד
+          </span>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-8 grid gap-5">
-          <Section title="פרטי העסק">
-            <Field label="שם העסק *" value={form.business_name} onChange={(v) => set("business_name", v)} />
-            <Field label="איש קשר *" value={form.contact_name} onChange={(v) => set("contact_name", v)} />
-            <div className="grid grid-cols-2 gap-3">
+        {/* R18 §G — progress bar */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between text-xs mb-1.5" style={{ color: "var(--foreground-soft)" }}>
+            <span>שלב <span className="ltr-num">{step}</span> מתוך <span className="ltr-num">3</span></span>
+            <span>{step === 1 ? "פרטי העסק" : step === 2 ? "יצירת קשר" : "פרופיל"}</span>
+          </div>
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--input-bg)" }}>
+            <div
+              className="h-full transition-all duration-300"
+              style={{ width: `${(step / 3) * 100}%`, background: "linear-gradient(90deg, var(--gold-100), var(--accent), var(--gold-500))" }}
+            />
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-6 grid gap-5">
+          {step === 1 && (
+            <Section title="פרטי העסק">
+              <Field label="שם העסק *" value={form.business_name} onChange={(v) => set("business_name", v)} />
+              <Field label="איש קשר *" value={form.contact_name} onChange={(v) => set("contact_name", v)} />
+              <CategoryPicker value={form.category} onChange={(v) => set("category", v)} />
+              <Field label="עיר / אזור" value={form.city} onChange={(v) => set("city", v)} />
+            </Section>
+          )}
+
+          {step === 2 && (
+            <Section title="יצירת קשר">
               <Field label="טלפון *" value={form.phone} onChange={(v) => set("phone", v)} type="tel" placeholder="050-1234567" />
-              <Field label="עיר" value={form.city} onChange={(v) => set("city", v)} />
-            </div>
-            <Field label="מייל *" value={form.email} onChange={(v) => set("email", v)} type="email" />
-            <CategoryPicker value={form.category} onChange={(v) => set("category", v)} />
-          </Section>
+              <Field label="מייל *" value={form.email} onChange={(v) => set("email", v)} type="email" />
+              <Field label="אתר" value={form.website} onChange={(v) => set("website", v)} placeholder="https://..." />
+            </Section>
+          )}
 
-          <Section title="פרטים מקצועיים (לאימות)">
-            <Field label="ת.ז. / מס' עוסק *" value={form.business_id} onChange={(v) => set("business_id", v)} placeholder="לזיהוי בלבד, לא מוצג ללקוחות" />
-            <Field label="שנים בתחום *" value={form.years_in_field} onChange={(v) => set("years_in_field", v)} type="number" placeholder="0-80" />
-            <Field label="קישור לדוגמת עבודה *" value={form.sample_work_url} onChange={(v) => set("sample_work_url", v)} placeholder="אינסטגרם, אתר, או דרייב" />
-          </Section>
+          {step === 3 && (
+            <Section title="פרופיל ואימות">
+              <Field label="ת.ז. / מס' עוסק *" value={form.business_id} onChange={(v) => set("business_id", v)} placeholder="לזיהוי בלבד, לא מוצג ללקוחות" />
+              <Field label="שנים בתחום *" value={form.years_in_field} onChange={(v) => set("years_in_field", v)} type="number" placeholder="0-80" />
+              <Field label="קישור לדוגמת עבודה *" value={form.sample_work_url} onChange={(v) => set("sample_work_url", v)} placeholder="אינסטגרם, אתר, או דרייב" />
+              <Textarea label="אודות (יוצג ללקוחות)" value={form.about} onChange={(v) => set("about", v)} maxLength={1500} />
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="אינסטגרם" value={form.instagram} onChange={(v) => set("instagram", v)} placeholder="@username" />
+                <Field label="פייסבוק" value={form.facebook} onChange={(v) => set("facebook", v)} placeholder="username" />
+              </div>
+            </Section>
+          )}
 
-          <Section title="פרופיל ציבורי">
-            <Textarea label="אודות (יוצג ללקוחות)" value={form.about} onChange={(v) => set("about", v)} maxLength={1500} />
-            <Field label="אתר" value={form.website} onChange={(v) => set("website", v)} placeholder="https://..." />
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="אינסטגרם" value={form.instagram} onChange={(v) => set("instagram", v)} placeholder="@username" />
-              <Field label="פייסבוק" value={form.facebook} onChange={(v) => set("facebook", v)} placeholder="username" />
-            </div>
-          </Section>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="btn-gold w-full inline-flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="animate-spin" size={18} /> שולח...
-              </>
-            ) : (
-              <>
-                <Send size={18} /> שלח בקשה
-              </>
+          {/* R18 §G — wizard nav. Prev (steps 2/3), Next (steps 1/2),
+              Submit (step 3 only). */}
+          <div className="flex items-center gap-3 mt-2">
+            {step > 1 && (
+              <button
+                type="button"
+                onClick={goPrev}
+                className="btn-secondary flex-1 inline-flex items-center justify-center gap-2"
+              >
+                <ArrowLeft size={16} className="rotate-180" /> הקודם
+              </button>
             )}
-          </button>
+            {step < 3 ? (
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={!stepValid(step)}
+                className="btn-gold flex-1 inline-flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                הבא <ArrowLeft size={16} />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={submitting}
+                className="btn-gold flex-1 inline-flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="animate-spin" size={18} /> שולח...
+                  </>
+                ) : (
+                  <>
+                    <Send size={18} /> שלח בקשה
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </main>

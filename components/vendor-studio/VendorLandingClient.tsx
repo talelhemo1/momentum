@@ -8,6 +8,7 @@ import { normalizeIsraeliPhone } from "@/lib/phone";
 import { trackPageAction, trackPageView } from "@/lib/vendorStudio";
 import { showToast } from "@/components/Toast";
 import type { VendorLandingData, VendorReview } from "@/lib/types";
+import { PhoneInput } from "@/components/inputs/PhoneInput";
 import { LuxuriousTemplate } from "./templates/LuxuriousTemplate";
 import { ModernTemplate } from "./templates/ModernTemplate";
 import { RusticTemplate } from "./templates/RusticTemplate";
@@ -278,14 +279,8 @@ function LeadInterestModal({
                 >
                   טלפון (אופציונלי)
                 </span>
-                <input
-                  type="tel"
-                  dir="ltr"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="input text-start ltr-num"
-                  placeholder="050-1234567"
-                />
+                {/* R18 §L — shared PhoneInput (fixed +972 chip). */}
+                <PhoneInput value={phone} onChange={setPhone} />
               </label>
               <label className="block">
                 <span
