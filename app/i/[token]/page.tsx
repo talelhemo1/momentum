@@ -20,7 +20,9 @@ export async function generateMetadata({
   params: Promise<{ token: string }>;
 }): Promise<Metadata> {
   const { token } = await params;
-  const ev = await lookupEventByToken(token);
+  // R29 — never let a Supabase/decoding hiccup bubble out of
+  // generateMetadata (that surfaces as a generic crash page).
+  const ev = await lookupEventByToken(token).catch(() => null);
   if (!ev) {
     return {
       title: "הזמנה — Momentum",

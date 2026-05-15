@@ -29,38 +29,49 @@ export async function createShortLink(
   longPath: string,
   eventId: string,
 ): Promise<string | null> {
-  const supabase = getSupabase();
-  if (!supabase) return null;
-  // A couple of attempts in the (astronomically unlikely) PK-collision case.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const shortId = generateShortId();
-    const { error } = await supabase
-      .from("short_links")
-      .insert({ short_id: shortId, long_path: longPath, event_id: eventId });
-    if (!error) return shortId;
-    // 23505 = unique_violation → retry with a new id; anything else → bail.
-    if (!/duplicate key|23505/i.test(error.message ?? "")) {
-      console.error("[shortLinks] insert failed", error.message);
-      return null;
+  // R29 — whole body guarded: the invite flow must NEVER break because
+  // the short_links table/row is missing or Supabase hiccups. Caller
+  // falls back to the full URL on null.
+  try {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    // A couple of attempts in the (astronomically unlikely) collision case.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const shortId = generateShortId();
+      const { error } = await supabase
+        .from("short_links")
+        .insert({ short_id: shortId, long_path: longPath, event_id: eventId });
+      if (!error) return shortId;
+      // 23505 = unique_violation → retry; anything else → bail.
+      if (!/duplicate key|23505/i.test(error.message ?? "")) {
+        console.error("[shortLinks] insert failed", error.message);
+        return null;
+      }
     }
+    return null;
+  } catch (e) {
+    console.error("[shortLinks] create failed", e);
+    return null;
   }
-  return null;
 }
 
 /** Resolve a short id back to its long path, or null if not found. */
 export async function lookupShortLink(
   shortId: string,
 ): Promise<string | null> {
-  const supabase = getSupabase();
-  if (!supabase) return null;
+  // R29 — getSupabase() + the query are ALL inside try/catch so zero
+  // errors escape (this runs in the OG/edge-ish server path too).
   try {
+    const supabase = getSupabase();
+    if (!supabase) return null;
     const { data } = (await supabase
       .from("short_links")
       .select("long_path")
       .eq("short_id", shortId)
       .maybeSingle()) as { data: { long_path: string } | null };
     return data?.long_path ?? null;
-  } catch {
+  } catch (e) {
+    console.error("[shortLinks] lookup failed", e);
     return null;
   }
 }

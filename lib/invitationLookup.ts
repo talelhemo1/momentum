@@ -34,23 +34,31 @@ export async function lookupEventByToken(
   token: string,
 ): Promise<InviteEventView | null> {
   if (!token) return null;
-  const longPath = await lookupShortLink(token);
-  if (!longPath) return null;
+  // R29 — fully guarded: lookupShortLink already swallows its own
+  // errors, but decodeInvitation / URL parsing must not throw out of
+  // here either (this runs in the OG/server path).
+  try {
+    const longPath = await lookupShortLink(token);
+    if (!longPath) return null;
 
-  const d = payloadFromPath(longPath);
-  if (!d) return null;
+    const d = payloadFromPath(longPath);
+    if (!d) return null;
 
-  const decoded = decodeInvitation(d);
-  if (!decoded) return null;
+    const decoded = decodeInvitation(d);
+    if (!decoded) return null;
 
-  const e = decoded.e;
-  return {
-    type: e.type,
-    hostName: e.host,
-    partnerName: e.partner,
-    date: e.date,
-    city: e.city,
-    synagogue: e.synagogue,
-    guestName: decoded.g?.name,
-  };
+    const e = decoded.e;
+    return {
+      type: e.type,
+      hostName: e.host,
+      partnerName: e.partner,
+      date: e.date,
+      city: e.city,
+      synagogue: e.synagogue,
+      guestName: decoded.g?.name,
+    };
+  } catch (e) {
+    console.error("[invitationLookup] failed", e);
+    return null;
+  }
 }
