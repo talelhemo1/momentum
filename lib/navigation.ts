@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Home, Users, Briefcase, ListChecks, Menu } from "lucide-react";
+import { Home, Users, Briefcase, ListChecks, Sparkles } from "lucide-react";
 
 /**
  * Navigation sources for the two nav surfaces. They diverge intentionally:
@@ -27,7 +27,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/guests", label: "אורחים", icon: Users },
   { href: "/vendors", label: "ספקים", icon: Briefcase },
   { href: "/checklist", label: "משימות", icon: ListChecks },
-  { href: "/settings", label: "עוד", icon: Menu },
+  // R25 — surface Momentum Live in the bottom nav so couples discover it
+  // without digging. Settings stays reachable via the header user-menu.
+  { href: "/event-day", label: "מצב חי", icon: Sparkles },
 ] as const;
 
 export interface HeaderNavItem {

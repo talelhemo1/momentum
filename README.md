@@ -20,6 +20,45 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Momentum Live setup
+
+Momentum Live lets a couple delegate event-day operations to a trusted
+manager via a single-use accept link, delivered over **two channels**
+(WhatsApp + SMS) so it arrives even if one fails.
+
+### Required env
+
+- **`NEXT_PUBLIC_SITE_URL`** — **required.** The public origin (e.g.
+  `https://momentum-psi-ten.vercel.app`). Without it the accept link in
+  the invite falls back to a relative path and won't open from WhatsApp
+  on the manager's phone.
+
+### Optional env (SMS backup — degrades gracefully)
+
+The WhatsApp channel always works (it's a `wa.me` deep link the couple
+opens). The SMS backup is best-effort: if these are unset the invite
+still works, the SMS is just skipped.
+
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_SMS_FROM` — optional, defaults to `+972533625007`
+
+### Supabase migrations (run both in the SQL editor)
+
+1. `supabase/migrations/2026-05-10-event-day-manager.sql` — the
+   `event_managers` table + RLS.
+2. `supabase/migrations/2026-05-12-accept-manager-rpc.sql` — the
+   accept-invitation RPC.
+
+Without these the manager invite insert fails (the setup screen shows a
+pointer to `/manage/diagnose`).
+
+### Tests
+
+```bash
+npm run test -- managerInvitation
+```
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

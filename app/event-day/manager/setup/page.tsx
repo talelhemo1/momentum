@@ -71,6 +71,9 @@ export default function EventManagerSetupPage() {
   const [managerName, setManagerName] = useState("");
   const [managerPhone, setManagerPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // R25 — SMS backup-channel result, surfaced on the done screen.
+  // null = not yet resolved.
+  const [smsSent, setSmsSent] = useState<boolean | null>(null);
 
   // Guard: no event → can't invite a manager. Mirror the same friendly empty
   // state we use across the app (lib/EmptyEventState pattern, inlined for
@@ -166,16 +169,38 @@ export default function EventManagerSetupPage() {
         return;
       }
 
-      // R20 Phase 2 — fire WhatsApp with the prefilled invite message.
-      // Must run synchronously in the same handler tick: browsers block
-      // window.open from any async chain that left the user's click event.
+      const eventHostName = state.event!.partnerName
+        ? `${state.event!.hostName} ו-${state.event!.partnerName}`
+        : state.event!.hostName;
+
+      // R25 — dual-channel. Kick off the SMS backup FIRST (request is
+      // initiated before the WhatsApp open), but do NOT await it before
+      // window.open — browsers block popups from async chains that left
+      // the user's click gesture. We resolve the promise afterwards to
+      // update the done-screen status.
+      const smsPromise = fetch("/api/manager/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: state.event!.id,
+          managerName: trimmedName,
+          managerPhone: normalized.phone,
+          invitationToken: token,
+          eventHostName,
+          eventDate: state.event!.date,
+        }),
+      })
+        .then((r) => r.json())
+        .then((d: { smsSent?: boolean }) => setSmsSent(!!d.smsSent))
+        .catch(() => setSmsSent(false));
+      void smsPromise;
+
+      // WhatsApp — still the primary channel, opened synchronously.
       const { url: waUrl, valid: phoneValid } = buildManagerInviteWhatsapp({
         managerName: trimmedName,
         managerPhone: normalized.phone,
         invitationToken: token,
-        eventHostName: state.event!.partnerName
-          ? `${state.event!.hostName} ו-${state.event!.partnerName}`
-          : state.event!.hostName,
+        eventHostName,
         eventDate: state.event!.date,
       });
       // Even if phone was valid above, buildManagerInviteWhatsapp may flag
@@ -419,9 +444,26 @@ export default function EventManagerSetupPage() {
           </div>
           <h1 className="mt-6 text-2xl font-bold gradient-gold">ההזמנה נשלחה!</h1>
           <p className="mt-3 text-sm" style={{ color: "var(--foreground-soft)" }}>
-            <strong className="text-[--foreground]">{managerName}</strong> קיבל/ה הודעה ב-WhatsApp עם הקישור.
+            ההזמנה ל-<strong className="text-[--foreground]">{managerName}</strong> יצאה בשני ערוצים.
             ברגע שהם יאשרו — יראו את הדשבורד הניהולי.
           </p>
+
+          {/* R25 — dual-channel delivery status */}
+          <div
+            className="mt-5 text-start text-sm rounded-2xl p-4 space-y-2"
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border)" }}
+          >
+            <div style={{ color: "var(--foreground-soft)" }}>
+              ✅ הודעת WhatsApp נפתחה לשליחה ידנית
+            </div>
+            <div style={{ color: "var(--foreground-soft)" }}>
+              {smsSent === null
+                ? "⏳ שולח SMS גיבוי…"
+                : smsSent
+                  ? "✅ SMS גיבוי נשלח אוטומטית"
+                  : "ℹ️ SMS גיבוי לא נשלח (אופציונלי — WhatsApp מספיק)"}
+            </div>
+          </div>
           <div className="mt-8 grid gap-2">
             <Link href="/event-day" className="btn-gold py-3">
               חזרה לדף יום-האירוע

@@ -32,6 +32,7 @@ import {
   X,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
+import { buildManagerInviteWhatsapp } from "@/lib/managerInvitation";
 import QRCode from "qrcode";
 
 interface RunOfShowItem {
@@ -80,7 +81,18 @@ export default function EventDayPage() {
   // the couple to re-invite. Local-only mode (no Supabase) leaves the
   // banner visible so the user discovers the feature; clicking it sends
   // them to setup, which gracefully toasts about needing cloud sync.
-  const [hasManagerActive, setHasManagerActive] = useState(false);
+  // R25 — full manager record so the banner can show 3 states
+  // (none / invited-pending / accepted). `reloadKey` lets actions
+  // (resend / replace) re-run the probe.
+  type ManagerRow = {
+    id: string;
+    status: "invited" | "accepted";
+    invitee_name: string;
+    invitee_phone: string;
+    invitation_token: string;
+  };
+  const [manager, setManager] = useState<ManagerRow | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   // R12 §3O — depend on the id only, not the whole event object. Any
   // unrelated edit (host name, date) would otherwise re-run this query.
   const eventIdForManagers = state.event?.id;
@@ -90,21 +102,65 @@ export default function EventDayPage() {
     if (!supabase) return;
     let cancelled = false;
     (async () => {
-      // Cast through never — `event_managers` isn't in a generated Database
-      // type. We only care whether the row count is > 0.
+      // Cast through never — `event_managers` isn't in a generated
+      // Database type. accepted wins over a stale invited row.
       const { data } = (await supabase
         .from("event_managers")
-        .select("id")
+        .select("id, status, invitee_name, invitee_phone, invitation_token")
         .eq("event_id", eventIdForManagers)
         .in("status", ["invited", "accepted"])
-        .limit(1)) as { data: { id: string }[] | null };
+        .order("status", { ascending: true }) // 'accepted' < 'invited'
+        .limit(1)) as { data: ManagerRow[] | null };
       if (cancelled) return;
-      setHasManagerActive(!!data && data.length > 0);
+      setManager(data && data.length > 0 ? data[0] : null);
     })();
     return () => {
       cancelled = true;
     };
-  }, [eventIdForManagers]);
+  }, [eventIdForManagers, reloadKey]);
+
+  const eventHostName = state.event
+    ? state.event.partnerName
+      ? `${state.event.hostName} ו-${state.event.partnerName}`
+      : state.event.hostName
+    : "";
+
+  const resendManagerInvite = () => {
+    if (!manager || !state.event) return;
+    const input = {
+      managerName: manager.invitee_name,
+      managerPhone: manager.invitee_phone,
+      invitationToken: manager.invitation_token,
+      eventHostName,
+      eventDate: state.event.date,
+    };
+    // Fire SMS backup (don't await — keep the WhatsApp gesture).
+    void fetch("/api/manager/invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId: state.event.id, ...input }),
+    }).catch(() => {});
+    const { url } = buildManagerInviteWhatsapp(input);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const replaceManager = async () => {
+    if (!manager) return;
+    const supabase = getSupabase();
+    if (!supabase) {
+      router.push("/event-day/manager/setup");
+      return;
+    }
+    // User-initiated removal of their own pending invite, then back to
+    // setup to invite someone else.
+    await supabase
+      .from("event_managers")
+      .delete()
+      .eq("id", manager.id);
+    setManager(null);
+    setReloadKey((k) => k + 1);
+    router.push("/event-day/manager/setup");
+  };
 
   const selectedVendors = useMemo(() => {
     return state.selectedVendors
@@ -184,10 +240,10 @@ export default function EventDayPage() {
             </div>
           </section>
 
-          {/* R20 — Momentum Live opt-in banner. Hidden once the couple
-              already invited a manager (any status). Tap the whole card to
-              enter the setup flow at /event-day/manager/setup. */}
-          {!hasManagerActive && (
+          {/* R25 — Momentum Live banner, 3 states:
+              none → opt-in · invited → pending+resend/replace ·
+              accepted → live link to the manager dashboard. */}
+          {!manager && (
             <Link
               href="/event-day/manager/setup"
               className="card-gold p-6 mt-6 flex items-center gap-4 hover:translate-y-[-2px] transition group"
@@ -211,6 +267,67 @@ export default function EventDayPage() {
               </div>
               <ArrowLeft size={20} className="text-[--accent] opacity-60 group-hover:opacity-100" aria-hidden />
             </Link>
+          )}
+
+          {manager?.status === "invited" && (
+            <div className="card-gold p-6 mt-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0" style={{ background: "rgba(212,176,104,0.15)", color: "var(--accent)" }}>
+                  <Clock size={26} aria-hidden />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-lg">
+                    ממתין לאישור של {manager.invitee_name}
+                  </h3>
+                  <p className="mt-1 text-sm" style={{ color: "var(--foreground-soft)" }}>
+                    שלחנו הזמנה ב-WhatsApp ו-SMS. ברגע שהם יאשרו — הם יראו את
+                    הדשבורד הניהולי.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button
+                  onClick={resendManagerInvite}
+                  className="btn-gold py-2.5 px-4 text-sm inline-flex items-center gap-2"
+                >
+                  📤 שלח שוב
+                </button>
+                <button
+                  onClick={replaceManager}
+                  className="text-sm py-2.5 px-4 rounded-full inline-flex items-center gap-2"
+                  style={{ border: "1px solid var(--border)", color: "var(--foreground-soft)" }}
+                >
+                  ↻ החלף מנהל
+                </button>
+              </div>
+            </div>
+          )}
+
+          {manager?.status === "accepted" && (
+            <div className="card-gold p-6 mt-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0" style={{ background: "rgba(52,211,153,0.15)", color: "rgb(110,231,183)" }}>
+                  <CheckCircle2 size={26} aria-hidden />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-lg">
+                    ✅ {manager.invitee_name} מנהל/ת את האירוע
+                  </h3>
+                  <p className="mt-1 text-sm" style={{ color: "var(--foreground-soft)" }}>
+                    ההזמנה אושרה. אפשר לצפות במצב החי שהמנהל רואה.
+                  </p>
+                </div>
+              </div>
+              {state.event?.id && (
+                <Link
+                  href={`/manage/${state.event.id}`}
+                  className="btn-gold py-2.5 px-4 text-sm inline-flex items-center gap-2 mt-5"
+                >
+                  צפה בדשבורד הניהולי
+                  <ArrowLeft size={15} aria-hidden />
+                </Link>
+              )}
+            </div>
           )}
 
           {/* Live event mode launcher — generates a QR pointing at the public /live/[id] page. */}

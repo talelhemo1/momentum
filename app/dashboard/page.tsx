@@ -12,6 +12,7 @@ import { getJourneyForState, getProgress } from "@/lib/journey";
 import { formatEventDate } from "@/lib/format";
 import { EVENT_TYPE_LABELS, REGION_LABELS, type AppState } from "@/lib/types";
 import { useNow, daysUntil } from "@/lib/useNow";
+import { LiveModeCTA } from "@/components/LiveModeCTA";
 import {
   CheckCircle2,
   Lock,
@@ -222,6 +223,8 @@ function DashboardInner() {
               </div>
             </div>
           </section>
+
+          <LiveModeCTA daysLeft={daysLeft} />
 
           <ToolsSection />
         </div>

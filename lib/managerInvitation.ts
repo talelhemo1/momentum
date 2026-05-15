@@ -32,11 +32,16 @@ export interface ManagerInviteResult {
   valid: boolean;
 }
 
-export function buildManagerInviteWhatsapp(input: ManagerInviteInput): ManagerInviteResult {
+/**
+ * R25 — the shared Hebrew invite body. Extracted so the SMS API route
+ * (`/api/manager/invite`) sends the EXACT same message the WhatsApp
+ * builder produces. Pure: no DOM, no fetch.
+ */
+export function buildInviteText(input: ManagerInviteInput): string {
   // tryGetPublicOrigin returns "" when called server-side without
   // NEXT_PUBLIC_SITE_URL set. We fall back to a relative path so the
-  // message text is at least sensible; the wa.me URL still works because
-  // the manager opens it on the same domain.
+  // message text is at least sensible; the link still works because
+  // the manager opens it on the same domain (or the absolute site URL).
   const origin = tryGetPublicOrigin();
   const acceptPath = `/manage/accept?token=${encodeURIComponent(input.invitationToken)}`;
   const acceptUrl = origin ? `${origin}${acceptPath}` : acceptPath;
@@ -76,7 +81,11 @@ export function buildManagerInviteWhatsapp(input: ManagerInviteInput): ManagerIn
     "",
     "תודה רבה! 💛",
   ];
-  const text = lines.join("\n");
+  return lines.join("\n");
+}
+
+export function buildManagerInviteWhatsapp(input: ManagerInviteInput): ManagerInviteResult {
+  const text = buildInviteText(input);
 
   const { phone, valid } = normalizeIsraeliPhone(input.managerPhone);
   const encoded = encodeURIComponent(text);

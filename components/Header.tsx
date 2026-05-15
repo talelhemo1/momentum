@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Logo } from "./Logo";
 import { Avatar } from "./Avatar";
 import { Menu, X, Sun, Moon, LogOut, Cloud, CloudOff, RefreshCw, AlertTriangle, Settings, CreditCard, Shield, HelpCircle, Crown, Building2 } from "lucide-react";
@@ -15,6 +15,8 @@ import { UpgradePlanModal } from "./UpgradePlanModal";
 import { EventSwitcher } from "./EventSwitcher";
 import { eventSlots } from "@/lib/eventSlots";
 import { HEADER_NAV } from "@/lib/navigation";
+import { useAppState } from "@/lib/store";
+import { useNow, daysUntil } from "@/lib/useNow";
 
 export function Header() {
   const pathname = usePathname();
@@ -30,6 +32,19 @@ export function Header() {
   // R14 — vendor pill in the header, visible only when the signed-in
   // user owns a vendor_landing. Same UI pattern as AdminBadge.
   const { isVendor } = useVendorContext();
+
+  // R25 — surface "מצב חי" in the top nav once the event is close
+  // (≤21 days), so couples find Momentum Live right when it matters.
+  const { state } = useAppState();
+  const nowMs = useNow();
+  const headerNav = useMemo(() => {
+    const eventDate = state.event?.date;
+    const d = eventDate ? daysUntil(eventDate, nowMs) : null;
+    if (d != null && d <= 21) {
+      return [...HEADER_NAV, { href: "/event-day", label: "מצב חי" }];
+    }
+    return HEADER_NAV;
+  }, [state.event?.date, nowMs]);
 
   // Wire the cloud sync writer once when the app mounts.
   useEffect(() => {
@@ -95,7 +110,7 @@ export function Header() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 text-sm rounded-full glass px-1.5 py-1.5">
-          {HEADER_NAV.map((n) => {
+          {headerNav.map((n) => {
             // R17: exact-match + child-prefix only. The naive `startsWith`
             // would mark "/vendors" active when the user is on "/vendorshop"
             // or any path that simply shares a prefix; the `/` boundary
@@ -174,7 +189,7 @@ export function Header() {
       {open && (
         <div className="md:hidden glass-strong border-t border-[var(--border)] scale-in">
           <div className="max-w-6xl mx-auto px-5 py-4 flex flex-col gap-1">
-            {HEADER_NAV.map((n) => {
+            {headerNav.map((n) => {
               // R17: exact-match + child-prefix only. The naive `startsWith`
             // would mark "/vendors" active when the user is on "/vendorshop"
             // or any path that simply shares a prefix; the `/` boundary
