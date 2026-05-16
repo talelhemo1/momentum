@@ -20,6 +20,19 @@ export async function generateMetadata({
   params: Promise<{ token: string }>;
 }): Promise<Metadata> {
   const { token } = await params;
+  // R32 — the dynamic opengraph-image.tsx was removed (fragile under the
+  // serverless font/edge path; see TASKLIST.R32). The static brand card
+  // is the single source of truth for the WhatsApp/social preview. We
+  // set it EXPLICITLY here (a page-level generateMetadata replaces the
+  // root openGraph, so it must re-declare the image).
+  const OG_IMAGE = {
+    url: "/og-default-1200x630.png",
+    width: 1200,
+    height: 630,
+    alt: "Momentum — מומנטום אירועים",
+  };
+  const TW_IMAGE = ["/og-default-1200x630.png"];
+
   // R29 — never let a Supabase/decoding hiccup bubble out of
   // generateMetadata (that surfaces as a generic crash page).
   const ev = await lookupEventByToken(token).catch(() => null);
@@ -27,6 +40,18 @@ export async function generateMetadata({
     return {
       title: "הזמנה — Momentum",
       description: "הזמנה לאירוע",
+      openGraph: {
+        type: "website",
+        title: "הזמנה — Momentum",
+        description: "הזמנה לאירוע",
+        locale: "he_IL",
+        images: [OG_IMAGE],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title: "הזמנה — Momentum",
+        images: TW_IMAGE,
+      },
     };
   }
   const hosts = ev.partnerName
@@ -39,13 +64,22 @@ export async function generateMetadata({
     .filter(Boolean)
     .join(" · ");
 
-  // The co-located opengraph-image.tsx file convention auto-injects the
-  // og:image / twitter:image meta — we only set the text + locale here.
   return {
     title,
     description,
-    openGraph: { type: "website", title, description, locale: "he_IL" },
-    twitter: { card: "summary_large_image", title, description },
+    openGraph: {
+      type: "website",
+      title,
+      description,
+      locale: "he_IL",
+      images: [OG_IMAGE],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: TW_IMAGE,
+    },
   };
 }
 

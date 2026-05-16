@@ -14,7 +14,23 @@ const heebo = Heebo({
   display: "swap",
 });
 
+// R32 — canonical site origin so metadata emits ABSOLUTE og:image URLs
+// (WhatsApp / social scrapers reject relative ones). NEXT_PUBLIC_SITE_URL
+// wins in prod; the deployed domain is the safe fallback.
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://momentum-psi-ten.vercel.app";
+
+// R32 — the static brand card. Every route in the App Router inherits
+// this; only routes with their own generateMetadata override it.
+const OG_IMAGE = {
+  url: "/og-default-1200x630.png",
+  width: 1200,
+  height: 630,
+  alt: "Momentum — מומנטום אירועים",
+};
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Momentum — תכנון אירועים חכם",
   description:
     "מרעיון ראשון ועד האורח האחרון. כל מה שאתה צריך לתכנון אירוע מושלם, במקום אחד.",
@@ -23,6 +39,16 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "Momentum",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Momentum — מומנטום אירועים",
+    locale: "he_IL",
+    images: [OG_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: ["/og-default-1200x630.png"],
   },
 };
 

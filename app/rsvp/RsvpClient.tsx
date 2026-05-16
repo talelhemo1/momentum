@@ -159,6 +159,19 @@ function RsvpInner() {
     if (trackedRef.current || !resolved) return;
     trackedRef.current = true;
     trackEvent("rsvp_view", { eventId: resolved.eventId, eventType: resolved.eventType });
+    // R32 — record the open so the host's dashboard sees it live. This
+    // is the reliable catch-all: every guest lands on /rsvp whether they
+    // came through the /i/<id> short link or a direct link. Pure
+    // fire-and-forget — a tracking failure must never affect RSVP.
+    void fetch("/api/invitation/view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventId: resolved.eventId,
+        guestId: resolved.guest.id,
+        guestName: resolved.guest.name,
+      }),
+    }).catch(() => {});
   }, [resolved]);
 
   // Loading state covers both flows: SSR/initial paint, and the async token

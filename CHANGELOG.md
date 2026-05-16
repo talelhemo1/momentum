@@ -4,6 +4,33 @@
 
 ---
 
+## [R32] — 2026-05-17 — תמונת OG סטטית כברירת-מחדל + מעקב פתיחות חי
+
+מטרה כפולה: כל הזמנה מציגה את כרטיס המותג הסטטי; הזוג רואה בזמן אמת מי
+פתח את הקישור. tsc/lint(0)/build(54 ראוטים) ירוקים; חי: `/api/invitation/view`
+→ 200, עמוד RSVP נטען ושולח ping.
+
+⚠️ **להריץ ב-Supabase:** `supabase/migrations/2026-05-17-invitation-views.sql`
+(טבלת `invitation_views` + RLS open-insert/select + realtime עם guard
+אידמפוטנטי). הקוד בטוח לפריסה לפני המיגרציה — עד שהטבלה קיימת ה-ping
+פשוט no-op והכרטיס מציג "עדיין אין פתיחות".
+
+### OG סטטית
+- `app/layout.tsx` — `metadataBase` (og:image אבסולוטי, חובה ל-WhatsApp) + `openGraph`/`twitter` עם `/og-default-1200x630.png`. כל route יורש.
+- `app/i/[token]/opengraph-image.tsx` — **נמחק** (next/og הדינמית שברירית בנתיב serverless; הסטטית מספיקה, ניתן להחזיר בעתיד עם font setup).
+- `/i/[token]` + `/rsvp` — generateMetadata/metadata מצהירים מפורשות על התמונה הסטטית (page-level דורס את ה-root).
+
+### מעקב פתיחות
+- migration `invitation_views` (+2 אינדקסים, RLS, realtime guard).
+- `app/api/invitation/view/route.ts` — POST, anon, תמיד 200 (כשל מעקב לא שובר RSVP).
+- `RsvpClient` — ping fire-and-forget פעם אחת לטעינה (catch-all לכל מסלולי הכניסה; ה-ping מצד-שרת של `/i` לא מומש בכוונה — un-awaited fetch לפני redirect לא מובטח).
+- `lib/useInvitationViews.ts` + `components/dashboard/InvitationActivityCard.tsx` — מונה מונפש, פיד 5 אחרונים (✨ מזוהה / 👤 אנונימי), realtime + toast/haptic על פתיחה חדשה. בדשבורד מעל ToolsSection, רק כשיש אורחים.
+
+### Dedup + פרטיות
+- אותו אורח תוך 10 דק׳ → לא נרשם שוב. IP נשמר רק כ-`sha256(salt:ip)`, לא raw.
+
+---
+
 ## [R31] — 2026-05-17 — קישורי ניווט בהזמנות (Waze + Google + Apple)
 
 לכל הזמנה ומסך — כפתור ניווט בלחיצה אחת. Waze כברירת-מחדל בישראל

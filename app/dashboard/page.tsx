@@ -13,6 +13,7 @@ import { formatEventDate } from "@/lib/format";
 import { EVENT_TYPE_LABELS, REGION_LABELS, type AppState } from "@/lib/types";
 import { useNow, daysUntil } from "@/lib/useNow";
 import { LiveModeCTA } from "@/components/LiveModeCTA";
+import { InvitationActivityCard } from "@/components/dashboard/InvitationActivityCard";
 import { buildNavigationLinks } from "@/lib/navigationLinks";
 import {
   CheckCircle2,
@@ -227,6 +228,13 @@ function DashboardInner() {
           </section>
 
           <LiveModeCTA daysLeft={daysLeft} />
+
+          {/* R32 — live "who opened the invitation" feed. Shown only once
+              the guest list exists (i.e. invitations can/have gone out);
+              an empty guest list means there's nothing to have opened. */}
+          {state.guests.length > 0 && (
+            <InvitationActivityCard eventId={event.id} />
+          )}
 
           <ToolsSection />
         </div>
