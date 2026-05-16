@@ -56,6 +56,15 @@ export async function POST(req: NextRequest) {
     if (decision === "rejected" && rejectionReason) {
       updates.rejection_reason = rejectionReason;
     }
+    // R38 — the catalog is now table-backed: /vendors reads approved
+    // applications via the list_approved_vendors RPC and maps each to a
+    // Vendor with id `app-<application id>`. Stamp that id here so the
+    // application is marked "synced to catalog" (clears the admin
+    // "approved but not in catalog" warning) — no separate vendors
+    // table needed; the row IS the catalog source.
+    if (decision === "approved") {
+      updates.approved_vendor_id = `app-${applicationId}`;
+    }
 
     // Catalog integration — Phase 0 quirk:
     //

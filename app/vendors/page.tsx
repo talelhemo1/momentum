@@ -9,6 +9,11 @@ import { Header } from "@/components/Header";
 import { VendorChatModal } from "@/components/VendorChatModal";
 import { useAppState } from "@/lib/store";
 import { VENDORS } from "@/lib/vendors";
+import { getSupabase } from "@/lib/supabase";
+import {
+  mapApprovedRows,
+  type ApprovedVendorRow,
+} from "@/lib/approvedVendors";
 import { EVENT_CONFIG } from "@/lib/eventConfig";
 import {
   REGION_LABELS,
@@ -78,6 +83,38 @@ function VendorsInner() {
   const [chatVendor, setChatVendor] = useState<Vendor | null>(null);
   const [quickVendor, setQuickVendor] = useState<Vendor | null>(null);
   const [page, setPage] = useState(1);
+
+  // R38 — approved vendor applications, loaded from the public-safe
+  // `list_approved_vendors` RPC and merged into the catalog. The moment
+  // the admin approves an application in /admin/vendors it shows here.
+  // Fail-soft: any error → empty, the static seed still renders.
+  const [approved, setApproved] = useState<Vendor[]>([]);
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data, error } = (await supabase.rpc(
+          "list_approved_vendors",
+        )) as { data: ApprovedVendorRow[] | null; error: unknown };
+        if (cancelled || error || !Array.isArray(data)) return;
+        const mapped = mapApprovedRows(data);
+        if (mapped.length) setApproved(mapped);
+      } catch {
+        /* keep [] — static catalog still works */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Static seed first, then approved DB vendors.
+  const allVendors = useMemo(
+    () => (approved.length ? [...VENDORS, ...approved] : VENDORS),
+    [approved],
+  );
 
   const prefilledRef = useRef(false);
   useEffect(() => {
@@ -152,14 +189,14 @@ function VendorsInner() {
   // re-renders — strictly worse UX.
   useEffect(() => {
     const id = searchParams.get("vendor");
-    const next = id ? VENDORS.find((v) => v.id === id) ?? null : null;
+    const next = id ? allVendors.find((v) => v.id === id) ?? null : null;
     // Guard against the loop: this effect reads searchParams → may setState
     // → another effect writes searchParams → this effect fires again. If
     // the result is identical, bail before triggering a re-render.
     if (next?.id === quickVendor?.id) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuickVendor(next);
-  }, [searchParams, quickVendor]);
+  }, [searchParams, quickVendor, allVendors]);
 
   // Persist filter+sort to sessionStorage AFTER the prefill seed has landed.
   useEffect(() => {
@@ -220,9 +257,9 @@ function VendorsInner() {
   }, [state.event, allTypes]);
 
   const filtered = useMemo(() => {
-    const f = filterVendors(VENDORS, filters);
+    const f = filterVendors(allVendors, filters);
     return sortVendors(f, sort, state.event?.region);
-  }, [filters, sort, state.event?.region]);
+  }, [allVendors, filters, sort, state.event?.region]);
 
   const visible = useMemo(() => filtered.slice(0, page * PAGE_SIZE), [filtered, page]);
 
@@ -233,12 +270,12 @@ function VendorsInner() {
 
   const countByType = useMemo(() => {
     const m: Partial<Record<VendorType, number>> = {};
-    for (const v of VENDORS) {
+    for (const v of allVendors) {
       if (filters.region !== "all" && v.region !== filters.region) continue;
       m[v.type] = (m[v.type] ?? 0) + 1;
     }
     return m;
-  }, [filters.region]);
+  }, [allVendors, filters.region]);
 
   // ─── Handlers ───
   const setFilterField = useCallback(<K extends keyof VendorFiltersShape>(key: K, value: VendorFiltersShape[K]) => {
