@@ -24,6 +24,7 @@ import {
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { INSPIRATION_GALLERY } from "@/lib/images";
+import { VENDORS } from "@/lib/vendors";
 
 export default function LandingPage() {
   return (
@@ -263,12 +264,13 @@ function Journey() {
 }
 
 function CategoryShowcase() {
+  // R37 — categories we're building, no fabricated per-type counts.
   const categories = [
-    { icon: <Building2 size={24} />, label: "אולמות וגנים", count: "24+" },
-    { icon: <Camera size={24} />, label: "צלמים", count: "22+" },
-    { icon: <Music size={24} />, label: "תקליטנים", count: "22+" },
-    { icon: <Video size={24} />, label: "סושיאל ורילז", count: "22+" },
-    { icon: <GlassWater size={24} />, label: "ברים ואלכוהול", count: "22+" },
+    { icon: <Building2 size={24} />, label: "אולמות וגנים" },
+    { icon: <Camera size={24} />, label: "צלמים" },
+    { icon: <Music size={24} />, label: "תקליטנים" },
+    { icon: <Video size={24} />, label: "סושיאל ורילז" },
+    { icon: <GlassWater size={24} />, label: "ברים ואלכוהול" },
   ];
   return (
     <section className="py-28 md:py-36 relative">
@@ -282,8 +284,9 @@ function CategoryShowcase() {
               <span className="gradient-gold">במקום אחד.</span>
             </h2>
             <p className="mt-5 text-white/60 text-lg leading-relaxed">
-              למעלה מ-100 ספקים בקטלוג — אולמות, צלמים, תקליטנים, סושיאל וברים.
-              מסונן לפי המיקום והתקציב שלך, עם דירוגים אמיתיים והשוואת מחירים.
+              אנחנו בהשקה — ומצרפים ספקים אמיתיים בכל יום: אולמות, צלמים,
+              תקליטנים, סושיאל וברים. הכל מסונן לפי המיקום והתקציב שלך,
+              ובלי מספרים מנופחים.
             </p>
             <div className="mt-7">
               <Link href="/vendors" className="btn-secondary inline-flex items-center gap-2">
@@ -305,7 +308,7 @@ function CategoryShowcase() {
                   <div>
                     <div className="font-semibold">{c.label}</div>
                     <div className="text-sm text-white/50 mt-0.5">
-                      <span className="ltr-num">{c.count}</span> ספקים
+                      בהרחבה — מצטרפים ספקים
                     </div>
                   </div>
                 </div>
@@ -546,7 +549,11 @@ function StatsCounter() {
             הצטרפו עכשיו והשפיעו על מה שנבנה — בלי מספרים מנופחים, רק כלים אמיתיים.
           </p>
           <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-4">
-            <Stat value="100+" label="ספקים בקטלוג" sub="בכל אזור בארץ" />
+            <Stat
+              value={`${VENDORS.length}`}
+              label="ספקים מאומתים"
+              sub="גדל מדי יום — הצטרפו"
+            />
             <Stat value="₪38M" label="חיסכון משוער" sub="לפי מודל התקצוב שלנו" />
             <Stat value="9" label="סוגי אירועים" sub="חתונה, בר/בת מצווה, ברית ועוד" />
           </div>

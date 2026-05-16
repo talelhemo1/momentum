@@ -211,10 +211,22 @@ function VendorCardImpl({
           </motion.button>
         </div>
 
+        {/* R37 — no fabricated rating for a brand-new catalog vendor.
+            Zero reviews → an honest "new vendor" badge instead of a
+            number nobody actually gave. */}
         <div className="absolute bottom-3 start-3 inline-flex items-center gap-1 text-xs bg-black/50 backdrop-blur-md rounded-full px-2.5 py-1 border border-white/10">
-          <Star size={11} className="text-[--accent]" fill="currentColor" />
-          <span className="font-bold ltr-num">{vendor.rating}</span>
-          <span className="text-white/50 ltr-num">({vendor.reviews})</span>
+          {vendor.reviews > 0 ? (
+            <>
+              <Star size={11} className="text-[--accent]" fill="currentColor" />
+              <span className="font-bold ltr-num">{vendor.rating}</span>
+              <span className="text-white/50 ltr-num">({vendor.reviews})</span>
+            </>
+          ) : (
+            <>
+              <Star size={11} className="text-[--accent]" fill="currentColor" />
+              <span className="font-semibold">ספק חדש</span>
+            </>
+          )}
         </div>
       </div>
 

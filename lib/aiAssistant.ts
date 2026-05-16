@@ -65,7 +65,14 @@ export function generateAssistantReply(message: string, state: AppState): string
     const inRegion = VENDORS.filter((v) => v.region === event.region).length;
     const saved = state.selectedVendors.length;
     if (saved === 0) {
-      return `יש לך גישה ל-${inRegion} ספקים בקטלוג ב${event.city || event.region}. הקטגוריות הכי חשובות ל${eventLabel} שלך הן: ${recommended.map((r) => `\`${r}\``).join(", ")}. הקלק על 'ספקים' למעלה כדי להתחיל.`;
+      // R37 — count is dynamic from the real catalog. At launch it may
+      // be 0 for a given region; phrase that as an invitation, not a
+      // dead "0 ספקים".
+      const catalogLine =
+        inRegion > 0
+          ? `יש לך גישה ל-${inRegion} ספקים בקטלוג ב${event.city || event.region}.`
+          : `הקטלוג בהקמה ואנחנו מצרפים ספקים אמיתיים בכל יום — שווה לעקוב.`;
+      return `${catalogLine} הקטגוריות הכי חשובות ל${eventLabel} שלך הן: ${recommended.map((r) => `\`${r}\``).join(", ")}. הקלק על 'ספקים' למעלה כדי להתחיל.`;
     }
     return `בחרת ${saved} ספקים — מצוין. ההמלצה שלי: סגור קודם אולם וצלם, אלו השניים שמתמלאים הכי מהר. אחר כך DJ או להקה. בעמוד הספקים יש סינון לפי מחיר ומיקום.`;
   }

@@ -559,6 +559,32 @@ function SmartEmptyState({
       >
         נקה את כל הסינונים
       </button>
+
+      {/* R37 — launch-honest invitation. We're building the catalog with
+          the first vendors in Israel; turn an empty result into a
+          recruiting moment instead of a dead end. */}
+      <div
+        className="mt-7 pt-6"
+        style={{ borderTop: "1px solid var(--border)" }}
+      >
+        <p
+          className="text-sm"
+          style={{ color: "var(--foreground-soft)" }}
+        >
+          אנחנו בונים את הקטלוג יחד עם הספקים הראשונים בישראל.
+        </p>
+        <Link
+          href="/vendors/join"
+          className="mt-4 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition hover:translate-y-[-1px]"
+          style={{
+            background:
+              "linear-gradient(135deg, var(--gold-100), var(--gold-500))",
+            color: "var(--gold-button-text)",
+          }}
+        >
+          🎯 אתה ספק? הצטרף אלינו עכשיו
+        </Link>
+      </div>
     </div>
   );
 }
