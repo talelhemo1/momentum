@@ -2,9 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { buildHostInvitationWhatsappLink } from "@/lib/invitation";
-import { createShortLink } from "@/lib/shortLinks";
-import { buildWhatsappInviteMessage } from "@/lib/invitationMessage";
-import { normalizeIsraeliPhone } from "@/lib/phone";
 import type { EventInfo, Guest } from "@/lib/types";
 
 /**
@@ -51,50 +48,22 @@ function cacheKeyFor(origin: string, eventId: string, guestId: string, token?: s
 }
 
 async function buildLink(origin: string, event: EventInfo, guest: Guest): Promise<BuiltLink> {
-  // CRITICAL: we use buildHostInvitationWhatsappLink (legacy `?d=&sig=`
-  // format) and NOT buildWhatsAppMessage (newer `?e=&g=&t=` token-only
-  // format).
+  // R33 — short-link + premium message now live INSIDE
+  // buildHostInvitationWhatsappLink (the single canonical builder), so
+  // this is a thin map. It used to re-implement the R28 short-link
+  // upgrade on top of the legacy result, which double-created short
+  // links (one here, one if any other caller appeared) — consolidated.
   //
-  // Why: the token URL only renders when the visitor's browser has the
-  // host's signingKey in localStorage. A guest opening the link from
-  // WhatsApp on their phone has NONE of the host's state — /rsvp's
-  // verification effect bails on `if (!state.event?.signingKey) return`,
-  // tokenOk stays null forever, and the page shows an infinite spinner.
-  // The legacy payload-in-URL format embeds event + guest data so /rsvp
-  // can render straight from the URL with no local state required.
-  const legacy = await buildHostInvitationWhatsappLink(origin, event, guest);
-
-  // R28 — upgrade to a short /i/<id> link + polished message + rich OG
-  // preview. ANY failure here falls back to the legacy long URL/message
-  // so the existing flow can never break.
-  try {
-    const rel = legacy.rsvpUrl.startsWith(origin)
-      ? legacy.rsvpUrl.slice(origin.length)
-      : legacy.rsvpUrl;
-    if (!rel.startsWith("/")) throw new Error("unexpected rsvp path");
-
-    const shortId = await createShortLink(rel, event.id);
-    if (!shortId) return { whatsappUrl: legacy.url, rsvpUrl: legacy.rsvpUrl };
-
-    const shortUrl = `${origin}/i/${shortId}`;
-    const message = buildWhatsappInviteMessage({
-      guestName: guest.name,
-      hostName: event.hostName,
-      partnerName: event.partnerName,
-      eventType: event.type,
-      eventDate: event.date,
-      venue: [event.synagogue, event.city].filter(Boolean).join(" · "),
-      shortUrl,
-    });
-    const { phone, valid } = normalizeIsraeliPhone(guest.phone);
-    const encoded = encodeURIComponent(message);
-    const whatsappUrl = valid
-      ? `https://wa.me/${phone}?text=${encoded}`
-      : `https://wa.me/?text=${encoded}`;
-    return { whatsappUrl, rsvpUrl: shortUrl };
-  } catch {
-    return { whatsappUrl: legacy.url, rsvpUrl: legacy.rsvpUrl };
-  }
+  // The builder uses the legacy `?d=&sig=` payload-in-URL format (not
+  // the `?e=&g=&t=` token-only one): a guest opening the link from
+  // WhatsApp has NONE of the host's localStorage, so /rsvp must render
+  // straight from the URL. The short `/i/<id>` redirects to that.
+  const { url, rsvpUrl } = await buildHostInvitationWhatsappLink(
+    origin,
+    event,
+    guest,
+  );
+  return { whatsappUrl: url, rsvpUrl };
 }
 
 /**

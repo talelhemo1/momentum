@@ -11,7 +11,7 @@ import RsvpClient from "./RsvpClient";
 // /rsvp must re-declare the static brand image or its WhatsApp/social
 // preview would render image-less.
 const OG_IMAGE = {
-  url: "/og-default-1200x630.png",
+  url: "/og-default-1200x630.png?v=2",
   width: 1200,
   height: 630,
   alt: "Momentum — מומנטום אירועים",
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "הוזמנת לאירוע",
-    images: ["/og-default-1200x630.png"],
+    images: ["/og-default-1200x630.png?v=2"],
   },
 };
 

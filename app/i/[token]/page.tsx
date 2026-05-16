@@ -26,12 +26,12 @@ export async function generateMetadata({
   // set it EXPLICITLY here (a page-level generateMetadata replaces the
   // root openGraph, so it must re-declare the image).
   const OG_IMAGE = {
-    url: "/og-default-1200x630.png",
+    url: "/og-default-1200x630.png?v=2",
     width: 1200,
     height: 630,
     alt: "Momentum — מומנטום אירועים",
   };
-  const TW_IMAGE = ["/og-default-1200x630.png"];
+  const TW_IMAGE = ["/og-default-1200x630.png?v=2"];
 
   // R29 — never let a Supabase/decoding hiccup bubble out of
   // generateMetadata (that surfaces as a generic crash page).

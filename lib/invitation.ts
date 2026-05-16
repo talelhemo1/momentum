@@ -1,6 +1,8 @@
 import type { EventInfo, Guest, GuestStatus } from "./types";
 import { hmacSign, hmacVerify, bytesToBase64Url, base64UrlToBytes } from "./crypto";
 import { normalizeIsraeliPhone } from "./phone";
+import { createShortLink } from "./shortLinks";
+import { buildWhatsappInviteMessage } from "./invitationMessage";
 
 /**
  * The invitation system works without a backend by encoding all needed data
@@ -244,59 +246,59 @@ export async function verifyInvitationSignature(
 }
 
 /**
- * Format an event date for the WhatsApp body. Returns "" for missing or
- * malformed dates so the caller can omit the line entirely instead of
- * leaking "Invalid Date" into the user-facing message.
+ * Build the WhatsApp link the host opens to send the invitation to a
+ * single guest.
+ *
+ * R33 — this is now the SINGLE canonical builder. It:
+ *   1. builds the long signed `/rsvp?d=…&sig=…` URL,
+ *   2. shortens it to `/i/<id>` (createShortLink — deduped per
+ *      event+path since R30),
+ *   3. composes the premium WhatsApp body (buildWhatsappInviteMessage:
+ *      polished copy + a clean short link that WhatsApp renders with the
+ *      rich OG card).
+ *
+ * Fail-soft at every step: if shortening fails we keep the long URL and
+ * still send the premium message (just with the long link). The invite
+ * flow must never break.
+ *
+ * `rsvpUrl` in the result is the SHORT url when shortening succeeded, so
+ * every UI (copy-link button, etc.) shows the clean `/i/<id>` link.
  */
-function formatHebrewDate(raw: string): string {
-  if (!raw) return "";
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("he-IL", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
-}
-
-/** Build the WhatsApp link the host opens to send the invitation to a single guest. */
 export async function buildHostInvitationWhatsappLink(
   origin: string,
   event: EventInfo,
   guest: Guest,
 ): Promise<{ url: string; rsvpUrl: string; valid: boolean }> {
   const { phone, valid } = normalizeIsraeliPhone(guest.phone);
-  const rsvpUrl = await buildRsvpUrl(origin, event, guest);
-  const date = formatHebrewDate(event.date);
+  const longRsvpUrl = await buildRsvpUrl(origin, event, guest);
 
-  const subjects = event.partnerName
-    ? `${event.hostName} ו${event.partnerName}`
-    : event.hostName;
+  // Shorten — fall back to the long URL on ANY failure.
+  let shortUrl = longRsvpUrl;
+  try {
+    const u = new URL(longRsvpUrl);
+    const shortId = await createShortLink(u.pathname + u.search, event.id);
+    if (shortId) {
+      shortUrl = `${origin.replace(/\/+$/, "")}/i/${shortId}`;
+    }
+  } catch (e) {
+    console.error("[invitation] createShortLink failed, using long URL", e);
+  }
 
-  const lines = [
-    `שלום ${guest.name}! 💫`,
-    "",
-    `${subjects} מתכבדים להזמין אותך לאירוע שלהם.`,
-    "",
-  ];
-  if (date) lines.push(`📅 ${date}`);
-  const where = [event.synagogue, event.city].filter(Boolean).join(" · ");
-  if (where) lines.push(`📍 ${where}`);
-  lines.push(
-    "",
-    "👇 לאישור הגעה (כן / לא / אולי + כמות אנשים):",
-    rsvpUrl,
-    "",
-    "נשמח לראותך! 🥂",
-  );
-  const text = lines.join("\n");
+  const text = buildWhatsappInviteMessage({
+    guestName: guest.name,
+    hostName: event.hostName,
+    partnerName: event.partnerName,
+    eventType: event.type,
+    eventDate: event.date,
+    venue: [event.synagogue, event.city].filter(Boolean).join(" · "),
+    shortUrl,
+  });
 
   const url = valid
     ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
     : `https://wa.me/?text=${encodeURIComponent(text)}`;
 
-  return { url, rsvpUrl, valid };
+  return { url, rsvpUrl: shortUrl, valid };
 }
 
 /** Build the WhatsApp link a guest opens to send their answer back to the host. */

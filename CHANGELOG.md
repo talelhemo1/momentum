@@ -4,6 +4,27 @@
 
 ---
 
+## [R33] — 2026-05-17 — חיבור הקישור הקצר + ההודעה הפרימיום לזרם הקנוני
+
+תיקון קריטי שמאחד את כל מה שנבנה ב-R28. הלוגיקה של הקישור הקצר +
+ההודעה הפרימיום ישבה רק בתוך `useGuestWhatsappLink` מעל ההודעה הישנה
+הארוכה — שני מסלולים לאותה עבודה. tsc/lint(0)/build ירוקים; ללא מיגרציה.
+
+### איחוד
+- `lib/invitation.ts` — `buildHostInvitationWhatsappLink` נכתב מחדש כבונה **הקנוני היחיד**: URL ארוך חתום → `createShortLink` (`/i/<id>`, dedup מ-R30) → `buildWhatsappInviteMessage` (הודעה פרימיום + קישור נקי שמציג כרטיס OG). Fail-soft: כשל קיצור → URL ארוך אבל עדיין הודעה פרימיום. מחזיר `rsvpUrl` = הקישור הקצר.
+- הוסר `formatHebrewDate` המת + ההודעה הישנה הידנית.
+- `useGuestWhatsappLink` — `buildLink` הפך ל-map דק (הוסר בלוק ה-R28 הכפול + ה-imports שלא בשימוש). מבטל יצירת קישור-קצר כפולה.
+- בדיקת callers: היחיד האמיתי הוא ה-hook; כפתור "שלח הזמנה" ב-/guests צורך אותו → עכשיו שולח הודעה פרימיום קצרה.
+- הותאם לחתימה האמיתית של `buildWhatsappInviteMessage` (ה-spec ביקש `eventTime` שלא קיים ב-`EventInfo`).
+
+### Cache-bust
+- כל הפניות `/og-default-1200x630.png` → `?v=2` (layout/rsvp/i) כדי לכפות re-scrape ב-WhatsApp/Facebook. אחרי deploy: Facebook Sharing Debugger → "Scrape Again".
+
+### OG סטטית
+- אומת ש-`metadataBase` + התמונה הסטטית ב-layout/rsvp/i כבר תקינים מ-R32 (ללא שינוי).
+
+---
+
 ## [R32] — 2026-05-17 — תמונת OG סטטית כברירת-מחדל + מעקב פתיחות חי
 
 מטרה כפולה: כל הזמנה מציגה את כרטיס המותג הסטטי; הזוג רואה בזמן אמת מי
