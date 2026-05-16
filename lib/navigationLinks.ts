@@ -1,11 +1,11 @@
 /**
  * R31 — deep links for the major navigation apps.
  *
- * All three accept a free-text address (lat/lng not required): Waze and
- * Google Maps run an internal search; Apple Maps reads the address as the
- * destination. `encodeURIComponent` makes Hebrew, quotes, dots and
- * parentheses safe inside the query. Pure + isomorphic — safe in a
- * server component, a client component, or the WhatsApp message builder.
+ * Waze and Google Maps run an internal search on the free-text address.
+ * R36 B7 — Apple Maps now uses `?daddr=<addr>&dirflg=d` (destination +
+ * drive directions) instead of `?q=` (which only drops a search pin and
+ * doesn't start navigation). `encodeURIComponent` makes Hebrew, quotes,
+ * dots and parentheses safe. Pure + isomorphic.
  */
 export interface NavLinks {
   waze: string;
@@ -26,7 +26,7 @@ export function buildNavigationLinks(
   return {
     waze,
     googleMaps: `https://www.google.com/maps/dir/?api=1&destination=${enc}`,
-    appleMaps: `https://maps.apple.com/?q=${enc}`,
+    appleMaps: `https://maps.apple.com/?daddr=${enc}&dirflg=d`,
     primary: waze,
   };
 }

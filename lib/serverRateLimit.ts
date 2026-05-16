@@ -16,6 +16,13 @@ interface Bucket {
 
 const store = new Map<string, Bucket>();
 
+// R36 B8 — full-Map scan on EVERY call is O(n) per request. Throttle
+// the sweep to once per 60s; an expired-but-not-yet-swept bucket is
+// still treated as fresh by the per-id check below, so correctness is
+// unchanged — only the cleanup cadence.
+let lastPruneAt = 0;
+const PRUNE_INTERVAL_MS = 60_000;
+
 /**
  * @returns true if the call is ALLOWED, false if the limit is exceeded.
  */
@@ -27,9 +34,13 @@ export function rateLimit(
 ): boolean {
   const now = Date.now();
 
-  // Prune expired entries (bounded cleanup — keeps the Map small).
-  for (const [k, v] of store) {
-    if (v.resetAt <= now) store.delete(k);
+  // Prune expired entries (bounded cleanup — keeps the Map small),
+  // at most once per minute.
+  if (now - lastPruneAt >= PRUNE_INTERVAL_MS) {
+    lastPruneAt = now;
+    for (const [k, v] of store) {
+      if (v.resetAt <= now) store.delete(k);
+    }
   }
 
   const id = `${bucket}:${key}`;

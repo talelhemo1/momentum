@@ -106,10 +106,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 });
     }
 
+    // R36 B5 — validate priorities: must be an array, ≤5 entries, each a
+    // short string. Stops a malformed/oversized array from being
+    // interpolated straight into the LLM prompt (prompt-bloat / abuse).
+    if (body.priorities !== undefined && !Array.isArray(body.priorities)) {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    }
+    const priorities = (body.priorities ?? [])
+      .filter((p): p is string => typeof p === "string")
+      .map((p) => p.slice(0, 40))
+      .slice(0, 5);
+
     const userPrompt = `תקציב כולל: ₪${Math.round(total)}
 מספר מוזמנים: ${Math.round(guests)}
-סוג אירוע: ${String(body.event_type ?? "wedding")}
-עדיפויות: ${(body.priorities ?? []).join(", ")}`;
+סוג אירוע: ${String(body.event_type ?? "wedding").slice(0, 40)}
+עדיפויות: ${priorities.join(", ")}`;
 
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",

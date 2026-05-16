@@ -4,6 +4,30 @@
 
 ---
 
+## [R36] — 2026-05-17 — Security hotfix: 3 דליפות RLS + 8 תיקוני ליטוש
+
+תיקון אבטחה קריטי: `short_links` / `invitation_views` / `event_memories`
+היו עם פוליסת `"anyone reads"` פתוחה — כל אנונימי יכל לקרוא קישורים,
+אנליטיקת פתיחות (כולל שמות אורחים) ותמונות של **כל** האירועים.
+tsc/lint(0)/build/test(9/9) ירוקים.
+
+⚠️ **להריץ ב-Supabase:** `supabase/migrations/2026-05-17-rls-hardening.sql`.
+הקוד בטוח לפריסה **בכל סדר** (`lookupShortLink` מנסה RPC ונופל חזרה
+ל-select ישיר), אבל הדליפה פתוחה עד שזה ירוץ — דחוף.
+
+### Block A — דליפות RLS
+- `short_links` — בוטלה קריאה פתוחה; קריאה דרך RPC `lookup_short_link` (SECURITY DEFINER). `lib/shortLinks.ts` עם fallback עמיד.
+- `invitation_views` + `event_memories` — קריאה רק לבעל האירוע / מנהלים מאושרים. טריגר rate-limit (1000/אירוע/שעה) על invitation_views.
+- **תיקון מול ה-spec:** ה-host לא מותנה בקבלת המנהל (`invited_by = auth.uid()` ללא `status='accepted'`) — אחרת הזוג ננעל מהאנליטיקה של עצמו. פער שיורי מתועד (זוג בלי מנהל ב-event_managers — מעקב המשך).
+
+### Block B — 8 תיקונים
+- B1 whatIf: `Number(guests)||1` נגד `₪NaN`. B2 realCost: "תקציב אמיתי" דורש גם סכום>0. B3 aiPackages: בחירה אקראית בין חבילות שוות-ניקוד. B4 twilio: בלי fallback מספר קשיח. B5 ai/packages: ולידציה ל-priorities (מערך, ≤5, מחרוזות). B6 crisis: `.limit(50)`. B7 navLinks: Apple Maps `?daddr&dirflg=d`. B8 serverRateLimit: prune כל 60 שנ׳.
+
+### Block C — תקנון §19
+דחוי — דורש פרטי ישות משפטית אמיתיים מהמשתמש (לא ניתן להמציא). אין שינוי קוד.
+
+---
+
 ## [R33] — 2026-05-17 — חיבור הקישור הקצר + ההודעה הפרימיום לזרם הקנוני
 
 תיקון קריטי שמאחד את כל מה שנבנה ב-R28. הלוגיקה של הקישור הקצר +

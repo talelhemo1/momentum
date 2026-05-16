@@ -181,10 +181,19 @@ export function computeRealCostPerGuest(
 ): RealCostBreakdown {
   const guests = activeGuestCount(state);
   const items = state.budget ?? [];
-  const fromReal = items.length >= 3;
+
+  // R36 B2 — "from real budget" requires the items to actually SUM to
+  // something. ≥3 rows that are all blank/zero (estimated:undefined)
+  // produced a ₪0 breakdown shown as a confident "from real budget".
+  const realCandidate =
+    items.length >= 3 ? computeFromBudgetItems(items) : null;
+  const realTotal = realCandidate
+    ? Object.values(realCandidate).reduce((a, b) => a + b, 0)
+    : 0;
+  const fromReal = realCandidate !== null && realTotal > 0;
 
   const breakdown = fromReal
-    ? computeFromBudgetItems(items)
+    ? (realCandidate as ReturnType<typeof computeFromBudgetItems>)
     : computeFromBenchmarks(tier, guests);
 
   const totalEvent = Object.values(breakdown).reduce((a, b) => a + b, 0);

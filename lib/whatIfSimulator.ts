@@ -124,7 +124,9 @@ export function simulate(
   return {
     total_event: total,
     delta_from_baseline: delta,
-    per_guest: Math.round(total / Math.max(1, inputs.guests)),
+    // R36 B1 — guard NaN: an empty/garbled guests input made
+    // Math.max(1, NaN) → NaN → "₪NaN לאורח".
+    per_guest: Math.round(total / Math.max(1, Number(inputs.guests) || 1)),
     savings_equivalents: equivalents.slice(0, 3),
   };
 }

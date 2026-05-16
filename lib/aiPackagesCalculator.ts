@@ -212,18 +212,19 @@ export function computePackagesFallback(
   const priorityBuckets = new Set<Bucket>(
     inputs.priorities.flatMap((p) => PRIORITY_TO_BUCKETS[p]),
   );
-  let best = 0;
-  let bestScore = -1;
-  packages.forEach((pkg, i) => {
-    const score = [...priorityBuckets].reduce(
-      (acc, b) => acc + pkg.breakdown[b],
-      0,
-    );
-    if (score > bestScore) {
-      bestScore = score;
-      best = i;
-    }
-  });
+  // R36 B3 — collect ALL packages tied for the top score and pick one
+  // at random, instead of always recommending the first profile when
+  // scores tie (e.g. no priorities selected → every score is equal and
+  // it always recommended BASE_PROFILES[0]). Not in React render — this
+  // runs in an async handler — so Math.random is fine here.
+  const scores = packages.map((pkg) =>
+    [...priorityBuckets].reduce((acc, b) => acc + pkg.breakdown[b], 0),
+  );
+  const topScore = Math.max(...scores);
+  const tied = scores
+    .map((s, i) => (s === topScore ? i : -1))
+    .filter((i) => i >= 0);
+  const best = tied[Math.floor(Math.random() * tied.length)] ?? 0;
 
   return {
     packages,

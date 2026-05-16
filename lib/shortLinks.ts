@@ -79,6 +79,24 @@ export async function lookupShortLink(
   try {
     const supabase = getSupabase();
     if (!supabase) return null;
+
+    // R36 SECURITY — the open "anyone reads short links" SELECT policy
+    // is dropped; resolution now goes through the SECURITY DEFINER
+    // `lookup_short_link` RPC so the table isn't anon-enumerable.
+    //
+    // Resilient deploy: try the RPC first. If it's missing (this code
+    // shipped before the migration ran) OR errors, fall back to the
+    // direct select — which still works pre-migration (old policy
+    // present) and is simply RLS-blocked post-migration (returns
+    // nothing, same as a miss). So the invite flow is safe in EITHER
+    // deploy order.
+    const rpc = (await supabase.rpc("lookup_short_link", {
+      p_short_id: shortId,
+    })) as { data: string | null; error: { message?: string } | null };
+    if (!rpc.error && typeof rpc.data === "string" && rpc.data) {
+      return rpc.data;
+    }
+
     const { data } = (await supabase
       .from("short_links")
       .select("long_path")

@@ -5,7 +5,10 @@ import "server-only";
 
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const TWILIO_FROM = process.env.TWILIO_SMS_FROM ?? "+972533625007";
+// R36 B4 — no hardcoded sender fallback. A baked-in number could send
+// real SMS from someone else's misconfigured deploy / leak a number.
+// Require TWILIO_SMS_FROM explicitly; missing = feature-off.
+const TWILIO_FROM = process.env.TWILIO_SMS_FROM;
 
 /**
  * Send a single SMS via the Twilio REST API (direct fetch, no SDK —
@@ -22,8 +25,8 @@ export async function sendSms({
   body: string;
 }): Promise<{ ok: boolean; error?: string }> {
   if (!to) return { ok: false, error: "missing recipient" };
-  if (!TWILIO_SID || !TWILIO_TOKEN) {
-    // Feature-detect: missing creds = silent, optional skip.
+  if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) {
+    // Feature-detect: missing creds OR sender = silent, optional skip.
     return { ok: false, error: "twilio not configured" };
   }
 

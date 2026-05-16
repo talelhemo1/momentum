@@ -85,7 +85,11 @@ export async function POST(req: NextRequest) {
       .from("event_managers")
       .select("invitee_phone, status")
       .eq("event_id", eventId)
-      .in("status", ["invited", "accepted"])) as {
+      .in("status", ["invited", "accepted"])
+      // R36 B6 — cap the fan-out. A real event has a handful of
+      // managers; 50 bounds an SMS broadcast (cost) even if the table
+      // was stuffed.
+      .limit(50)) as {
       data: { invitee_phone: string | null; status: string }[] | null;
     };
 

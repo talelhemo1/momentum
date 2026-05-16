@@ -10,7 +10,9 @@ describe("buildNavigationLinks", () => {
     expect(n.googleMaps).toBe(
       `https://www.google.com/maps/dir/?api=1&destination=${enc}`,
     );
-    expect(n.appleMaps).toBe(`https://maps.apple.com/?q=${enc}`);
+    expect(n.appleMaps).toBe(
+      `https://maps.apple.com/?daddr=${enc}&dirflg=d`,
+    );
     // Israel default = Waze.
     expect(n.primary).toBe(n.waze);
   });
