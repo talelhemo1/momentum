@@ -222,10 +222,8 @@ function VendorCardImpl({
               <span className="text-white/50 ltr-num">({vendor.reviews})</span>
             </>
           ) : (
-            <>
-              <Star size={11} className="text-[--accent]" fill="currentColor" />
-              <span className="font-semibold">ספק חדש</span>
-            </>
+            // R36+R37 — no ⭐ / fabricated count for a brand-new vendor.
+            <span className="font-semibold">✨ חדש בקטלוג</span>
           )}
         </div>
       </div>

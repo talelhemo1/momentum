@@ -39,8 +39,9 @@ const v = (
 });
 
 // The one real, verified vendor (post-R37 cleanup).
-// ⚠️ phone / socials are placeholders — owner to supply the real
-// דפוס אומן contact details so they can be filled in (see TASKLIST.R37).
+// Real website supplied by the owner (R36+R37 re-issue). Phone is
+// still a placeholder — owner to supply the real דפוס אומן number
+// before launch.
 export const VENDORS: Vendor[] = [
   v(
     "inv-dafus-uman-naharia",
@@ -51,12 +52,12 @@ export const VENDORS: Vendor[] = [
     0,
     150,
     "בית דפוס בנהריה המתמחה בהזמנות לחתונות, חינות ואירועים. הדפסה איכותית על נייר יוקרתי, עם אפשרויות עיצוב מותאמות אישית.",
-    "972-4-992-0000", // TODO(owner): real דפוס אומן phone
+    "972-4-992-0000", // TODO(owner): real דפוס אומן phone before launch
     true,
-    ["הזמנות", "הדפסה יוקרתית", "צפון"],
+    ["הזמנות", "הדפסה יוקרתית", "צפון", "נהריה"],
     {
-      // TODO(owner): real IG / FB / website for דפוס אומן if available
-      website: undefined,
+      website: "https://www.ouman.co.il",
+      // TODO(owner): real IG / FB for דפוס אומן if available
       instagram: undefined,
       facebook: undefined,
     },
