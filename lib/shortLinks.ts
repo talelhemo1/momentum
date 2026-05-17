@@ -21,49 +21,42 @@ export function generateShortId(): string {
 }
 
 /**
- * Persist `longPath` behind a fresh short id. Returns the id, or null
- * if Supabase is unavailable / the insert failed (caller keeps the long
- * URL — the existing flow must never break).
+ * Persist `longPath` behind a short id (deduped per event+path).
+ * Returns the id, or null if Supabase is unavailable / the call failed
+ * (caller keeps the long URL — the existing flow must never break).
  */
 export async function createShortLink(
   longPath: string,
   eventId: string,
 ): Promise<string | null> {
-  // R29 — whole body guarded: the invite flow must NEVER break because
-  // the short_links table/row is missing or Supabase hiccups. Caller
-  // falls back to the full URL on null.
+  // R40 — was a SELECT (dedup) + INSERT pair. R36 dropped the public
+  // SELECT policy on short_links (mass-PII-leak fix), so the dedup
+  // query silently returned null under RLS, every INSERT then hit the
+  // R30 (event_id, long_path) unique index → all 3 retries failed →
+  // creation always returned null → callers shipped the long URL
+  // (guests saw long, image-less links again).
+  //
+  // The SECURITY DEFINER RPC `create_or_get_short_link` does both steps
+  // atomically in the DB: returns the existing short_id for an
+  // (event_id, long_path) pair, or generates+inserts a fresh one with
+  // its own collision retries.
   try {
     const supabase = getSupabase();
     if (!supabase) return null;
 
-    // R30 — dedupe: re-use an existing short id for the SAME
-    // (event_id, long_path) instead of inserting a fresh row on every
-    // cache-miss / reload / device. Without this the open-INSERT table
-    // grew one row per (re)send. (The R30 hardening migration adds a
-    // matching unique index as the hard guarantee.)
-    const existing = (await supabase
-      .from("short_links")
-      .select("short_id")
-      .eq("event_id", eventId)
-      .eq("long_path", longPath)
-      .limit(1)
-      .maybeSingle()) as { data: { short_id: string } | null };
-    if (existing.data?.short_id) return existing.data.short_id;
+    const { data, error } = await supabase.rpc("create_or_get_short_link", {
+      p_long_path: longPath,
+      p_event_id: eventId,
+    });
 
-    // A couple of attempts in the (astronomically unlikely) collision case.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const shortId = generateShortId();
-      const { error } = await supabase
-        .from("short_links")
-        .insert({ short_id: shortId, long_path: longPath, event_id: eventId });
-      if (!error) return shortId;
-      // 23505 = unique_violation → retry; anything else → bail.
-      if (!/duplicate key|23505/i.test(error.message ?? "")) {
-        console.error("[shortLinks] insert failed", error.message);
-        return null;
-      }
+    if (error) {
+      console.error(
+        "[shortLinks] create_or_get_short_link RPC failed",
+        error,
+      );
+      return null;
     }
-    return null;
+    return (data as string | null) ?? null;
   } catch (e) {
     console.error("[shortLinks] create failed", e);
     return null;

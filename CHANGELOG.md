@@ -4,6 +4,18 @@
 
 ---
 
+## [R40] — 2026-05-18 — Hotfix: יצירת short-link דרך RPC
+
+R36 הסיר את ה-SELECT הציבורי מ-`short_links`, אז ה-dedup SELECT של
+`createShortLink` החזיר null תחת RLS → כל INSERT נכשל על האינדקס הייחודי
+`(event_id,long_path)` מ-R30 → היצירה תמיד החזירה null → מוזמנים קיבלו
+שוב URL ארוך בלי תמונה. תוקן: `createShortLink` קורא עכשיו ל-RPC
+`create_or_get_short_link` (SECURITY DEFINER) שעושה dedup+insert
+אטומית בצד השרת. נתיב הכשל ללא שינוי (null → fallback ל-URL ארוך).
+tsc/lint(0)/build/test(9/9) ירוקים. ה-SQL כבר רץ ב-Supabase.
+
+---
+
 ## [R39] — 2026-05-18 — שליחה מהירה (Express Bulk Send)
 
 כפתור "🚀 שליחה מהירה" ב-/guests פותח Modal שמטפל בכל המוזמנים
