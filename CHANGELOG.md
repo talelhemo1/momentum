@@ -4,6 +4,26 @@
 
 ---
 
+## [R41] — 2026-05-18 — עיצוב מחדש של הדשבורד (Hero אינטימי + מסע אנכי)
+
+הדשבורד עוצב מחדש לשתי שכבות: Hero אינטימי (שמות הזוג, תאריך, ספירה
+לאחור ענקית) ומתחתיו Journey Path אנכי גרפי. tsc/lint(0)/build/test(9/9)
+ירוקים. ללא מיגרציה/env.
+
+### נוסף
+- `components/dashboard/IntimateHero.tsx` — badge סוג, שמות gradient gold (clamp), תאריך עברי מלא, count-up ענק (reduced-motion-safe), מצבי היום/עבר. ללא תמונת רקע (אין שדה כזה ב-EventInfo — הענף האופציונלי ב-spec הושמט במכוון).
+- `components/dashboard/JourneyPath.tsx` — נתיב אנכי: עיגול לכל שלב (✓/מספר/🔒) + קו מקשר זהוב, כרטיס עם "התקדם →"/"ייפתח אחרי …". confetti קטן (מכבד reduced-motion) במעבר milestone. סמן ה-active הוא glow סטטי ולא pulse (כי `.pulse-gold` מוסתר תחת reduced-motion).
+- `TodayCard` ("מה היום?") + `StatsStrip` רצועה דקה (👥/💰/🤝/⚡, בלי מכנים מומצאים).
+
+### הוסר/נשמר
+- נמחקו הרכיבים המתים Hero/NextActionCard/StatCard/JourneyCard + imports שלא בשימוש (lint נקי).
+- נשמרו LiveModeCTA / InvitationActivityCard / WelcomeBanner. `ToolsSection` **לא** נמחק (אין route ‎/menu; הסרת גישה לכלים = רגרסיה) — הועבר לתחתית תחת "כל הכלים" מוחלש.
+
+### בדיקה
+מודול /dashboard נטען נקי (redirect ל-/signup בלי auth מוכיח קומפילציה+ריצה). תצוגה מלאה דורשת host מחובר עם אירוע — ידני.
+
+---
+
 ## [R40] — 2026-05-18 — Hotfix: יצירת short-link דרך RPC
 
 R36 הסיר את ה-SELECT הציבורי מ-`short_links`, אז ה-dedup SELECT של
