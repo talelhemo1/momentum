@@ -12,6 +12,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useUser } from "@/lib/user";
 import { buildHostInvitationWhatsappLink } from "@/lib/invitation";
 import { tryGetPublicOrigin } from "@/lib/origin";
+import { normalizeIsraeliPhone } from "@/lib/phone";
+import { ExpressSendModal } from "@/components/guests/ExpressSendModal";
 import { buildWhatsAppMessage } from "@/lib/rsvpLinks";
 import { useGuestWhatsappLink, prewarmGuestWhatsappLinks } from "@/hooks/useGuestWhatsappLink";
 import { trackEvent } from "@/lib/analytics";
@@ -77,6 +79,7 @@ function GuestsPageInner() {
   const { user, hydrated: userHydrated } = useUser();
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
+  const [showExpress, setShowExpress] = useState(false);
   const [filter, setFilter] = useState<"all" | GuestStatus>("all");
   const [search, setSearch] = useState("");
   const [importBusy, setImportBusy] = useState(false);
@@ -257,6 +260,11 @@ function GuestsPageInner() {
       invited: invited.length,
       maybe: maybe.length,
       pending: state.guests.filter((g) => g.status === "pending").length,
+      // R39 — express-send eligible: still pending AND a valid phone.
+      expressEligible: state.guests.filter(
+        (g) =>
+          g.status === "pending" && normalizeIsraeliPhone(g.phone).valid,
+      ).length,
     };
   }, [state.guests]);
 
@@ -300,6 +308,16 @@ function GuestsPageInner() {
                 <BookUser size={18} />
                 {importBusy ? "מייבא..." : "ייבוא מאנשי קשר"}
               </button>
+              {stats.expressEligible > 0 && (
+                <button
+                  onClick={() => setShowExpress(true)}
+                  className="btn-gold inline-flex items-center gap-2"
+                  title="שליחה מהירה אחד-אחרי-השני — wa.me נפתח אוטומטית בכל חזרה לאפליקציה"
+                >
+                  🚀 שליחה מהירה לכולם (
+                  <span className="ltr-num">{stats.expressEligible}</span>)
+                </button>
+              )}
               {state.guests.some((g) => g.status === "pending" && g.phone) && (
                 <button
                   onClick={() => setShowBulk(true)}
@@ -516,6 +534,13 @@ function GuestsPageInner() {
             onClose={() => setShowBulk(false)}
           />
         )}
+        <ExpressSendModal
+          open={showExpress}
+          onClose={() => setShowExpress(false)}
+          guests={state.guests}
+          event={state.event}
+          origin={tryGetPublicOrigin()}
+        />
       </main>
     </>
   );

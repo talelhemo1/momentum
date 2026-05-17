@@ -4,6 +4,27 @@
 
 ---
 
+## [R39] — 2026-05-18 — שליחה מהירה (Express Bulk Send)
+
+כפתור "🚀 שליחה מהירה" ב-/guests פותח Modal שמטפל בכל המוזמנים
+הממתינים אחד-אחרי-השני. המשתמש פותח wa.me, שולח, חוזר ל-tab → תוך
+~1.5 שנ׳ ה-wa.me הבא נפתח אוטומטית. הפתיחה רוכבת על "חזרת ה-tab"
+(visibilitychange) כך שחוסם הפופאפים מתייחס אליה כיוזמת-משתמש.
+~200 הזמנות ב-5 דק׳. tsc/lint(0)/build/test(9/9) ירוקים. ללא מיגרציה.
+
+### נוסף
+- `hooks/useExpressSend.ts` — state machine: queue/current/completed/skipped, listener `visibilitychange` יחיד (cleanup מסודר נגד memory-leak), prebuild של ה-wa.me URL (כדי ש-window.open יישאר סינכרוני — משתמש ב-`buildHostInvitationWhatsappLink` הקיים, בלי builder חדש), שמירת state ל-localStorage + "המשך מאיפה שהפסקת?" ל-2 שעות.
+- `components/guests/ExpressSendModal.tsx` — שלב 0 סינון קבוצה (חברים/משפחה/עבודה/שכנים), כרטיס מוזמן נוכחי, progress bar, צ׳יפים סטטיסטיים, overlay countdown עם ביטול, מסך סיום + confetti, mobile full-screen.
+- `/guests` — כפתור "🚀 שליחה מהירה לכולם (N)" (N = ממתינים עם טלפון תקין), `STORAGE_KEYS.expressSendState`.
+
+### הערת תכנון
+ספק ביקש "status נשאר pending"; אך כפתור השליחה הבודד הקיים כבר קורא `actions.markInvited` (→ "invited" שזה סטטוס ה-awaiting-response באפליקציה). שמירה על העקביות הזו (פילטר/ספירה/resume) נבחרה במקום סטייה שהייתה משבשת ספירות ומכניסה שוב מוזמנים שכבר נשלחו ל-resume.
+
+### בדיקה
+מודול /guests נטען נקי; זרימת ה-tab-return + confetti + haptics דורשים host מחובר + מעבר אמיתי ל-WhatsApp — בדיקה ידנית במכשיר.
+
+---
+
 ## [R36+R37 — ליטוש] — 2026-05-17 — RPC טהור ל-short_links + אתר דפוס אומן אמיתי
 
 R36/R37/R38 כבר נפרסו וה-migrations רצו. הסבב הזה הוא ליטוש על הקיים

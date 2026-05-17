@@ -55,6 +55,9 @@ export const STORAGE_KEYS = {
   vendorContext: "momentum.vendor.context.v1",
   // R26 — Momentum Live alert-sound opt-in (default off).
   managerSounds: "momentum.manager.sounds.v1",
+  // R39 — Express Bulk Send resume state ({queueIds, completedIds,
+  // skippedIds, currentId, savedAt}). Offered as "continue?" for 2h.
+  expressSendState: "momentum.expressSend.v1",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];
