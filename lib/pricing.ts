@@ -37,12 +37,12 @@ export const COUPLE_TIERS: CouplePricingTier[] = [
     priceSubLabel: "לתמיד · ללא כרטיס אשראי",
     tagline: "להתנסות בלי להתחייב",
     features: [
-      "עד 30 אורחים",
+      "עד 50 אורחים",
       "שליחת הזמנות בוואצאפ עם token חתום",
       "מעקב RSVP בזמן אמת",
       "סידור הושבה ידני",
       "צ'קליסט מותאם לסוג האירוע",
-      "גישה לקטלוג של 333 ספקים",
+      "גישה לקטלוג הספקים",
       "עד 10 ספקים ברשימה האישית",
       "מחשבון אלכוהול ומשקאות",
       "צ'אטבוט אישי — 5 שאלות ביום",
@@ -60,10 +60,10 @@ export const COUPLE_TIERS: CouplePricingTier[] = [
   {
     id: "premium",
     label: "פרימיום לזוגות",
-    priceILS: 399,
-    priceLabel: "₪399",
-    priceSubLabel: "חד-פעמי לאירוע · ללא מנוי חודשי",
-    tagline: "כל הכלים, ללא הגבלות, עד אחרי האירוע",
+    priceILS: 99,
+    priceLabel: "₪99",
+    priceSubLabel: "מחיר השקה · חד-פעמי לאירוע · ללא מנוי חודשי",
+    tagline: "כל הכלים, ללא הגבלות, עד אחרי האירוע — במחיר השקה",
     recommended: true,
     features: [
       "אורחים ללא הגבלה",
@@ -78,7 +78,7 @@ export const COUPLE_TIERS: CouplePricingTier[] = [
       "סנכרון בין מכשירים בענן",
       "תמיכה מועדפת",
     ],
-    ctaLabel: "קח את הפרימיום ₪399",
+    ctaLabel: "קח את הפרימיום ₪99",
     ctaHref: "/onboarding?gate=ok&plan=premium",
   },
 ];

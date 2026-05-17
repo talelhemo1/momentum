@@ -172,9 +172,9 @@ export default function AdminDashboardPage() {
   // Projected revenue (theoretical ceiling — every couple + vendor paid).
   const projectedRevenue = stats
     ? {
-        couples_potential: stats.events.total * 399,
+        couples_potential: stats.events.total * 99,
         vendors_potential: stats.vendors.approved * 199,
-        total_potential: stats.events.total * 399 + stats.vendors.approved * 199,
+        total_potential: stats.events.total * 99 + stats.vendors.approved * 199,
       }
     : null;
 

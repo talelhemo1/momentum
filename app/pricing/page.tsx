@@ -15,7 +15,7 @@ import {
 export const metadata = {
   title: "מסלולים ותמחור — Momentum",
   description:
-    "מסלול חינם לתמיד, פרימיום ₪399 חד-פעמי לאירוע, ומסלולי ספקים נפרדים.",
+    "מסלול חינם לתמיד, פרימיום ₪99 (מחיר השקה) חד-פעמי לאירוע, ומסלולי ספקים נפרדים.",
 };
 
 /**
@@ -56,7 +56,7 @@ export default function PricingPage() {
               style={{ color: "var(--foreground-soft)" }}
             >
               חינם לתמיד או{" "}
-              <strong className="text-[--foreground]">תשלום חד-פעמי של ₪399</strong>{" "}
+              <strong className="text-[--foreground]">תשלום חד-פעמי של ₪99 (מחיר השקה)</strong>{" "}
               לאירוע. ללא מנוי חודשי, ללא הפתעות.
             </p>
           </header>

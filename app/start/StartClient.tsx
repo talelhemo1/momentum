@@ -57,7 +57,7 @@ export function StartClient() {
             </h1>
             <p className="mt-5 text-base md:text-lg leading-relaxed" style={{ color: "var(--foreground-soft)" }}>
               <strong className="text-[--foreground]">אין מנוי חודשי.</strong>{" "}
-              חינם להתחלה, או ₪399 חד-פעמי לאירוע — ללא הפתעות, ללא חיובים אוטומטיים.
+              חינם להתחלה, או ₪99 חד-פעמי לאירוע (מחיר השקה) — ללא הפתעות, ללא חיובים אוטומטיים.
             </p>
           </div>
 

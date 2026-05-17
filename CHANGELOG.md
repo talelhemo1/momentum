@@ -4,6 +4,28 @@
 
 ---
 
+## [R42] — 2026-05-18 — דף נחיתה יוקרתי + מחירי השקה (₪99 / ₪199)
+
+דף הבית עוצב מחדש מהיסוד כדף מכירה: hook → כאב → פתרון → mockup →
+**תמחור** → סטטים → FAQ → CTA סופי. מחיר זוגות ₪399→₪99 (השקה, חד-פעמי)
+בעקביות בכל מקום. tsc/lint(0)/build/test(9/9) ירוקים; `/` אומת חי. ללא
+מיגרציה/env.
+
+### תמחור
+- `lib/pricing.ts` (מקור-אמת יחיד): פרימיום ₪99 + תווית/CTA השקה; חינם "50 אורחים" (היה 30, display-only) + הסרת טענת "333 ספקים" המיושנת.
+- תוקנו אזכורי ₪399 קשיחים: `app/pricing` (metadata+body), `app/start/StartClient`, `app/rsvp/RsvpClient`, `app/admin/dashboard` (הקרנת הכנסה ‎*399→*99; ספקים ‎*199 נשאר). הכרטיסים ב-/pricing,/start נקראים מ-COUPLE_TIERS — מתעדכנים לבד.
+
+### רכיבים חדשים (components/landing/)
+Hero · PainSection · SolutionSection · AppShowcase (phone-mock CSS, ללא asset) · PricingSection · HonestStats · FAQ (accordion `<details>` — אפס client JS) · FinalCTA. `app/page.tsx` הפך לקומפוזיציה דקה; ~670 שורות inline (כולל הטסטימוניאלס המומצאים) נמחקו.
+
+### סטייה מודעת
+ה-spec ביקש "280+ ספקים" ב-HonestStats. R37 הסיר 332 ספקים מזויפים ואישרת מספרים כנים — אז ה-tile מציג את **המספר האמיתי הדינמי** (`{VENDORS.length}+`, כרגע "1+", גדל מאליו). שאר 3 הסטטים אמיתיים.
+
+### עיצוב/נגישות
+clamp() רספונסיבי (mobile-first), py-24/32 נדיב, orb בודד לכל section. **ללא `pulse-gold`** על כפתור ה-CTA הסופי (הוא `display:none` תחת reduced-motion — היה מסתיר את ה-CTA; R41).
+
+---
+
 ## [R41] — 2026-05-18 — עיצוב מחדש של הדשבורד (Hero אינטימי + מסע אנכי)
 
 הדשבורד עוצב מחדש לשתי שכבות: Hero אינטימי (שמות הזוג, תאריך, ספירה
