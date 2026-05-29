@@ -21,6 +21,27 @@
     "app/api/vendors/admin/decide/route.ts": {
       "maxDuration": 15
     },
+    "app/api/guests/voice-campaign/start/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/webhooks/nlpearl/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/webhooks/whatsapp/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/whatsapp/send-rsvp/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/whatsapp/send-seating/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/whatsapp-digest/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/whatsapp-voice-fallback/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/send-scheduled/route.ts": {
       "maxDuration": 60
     }
@@ -30,6 +51,14 @@
     {
       "path": "/api/send-scheduled",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/whatsapp-digest",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/whatsapp-voice-fallback",
+      "schedule": "0 10 * * *"
     }
   ],
 

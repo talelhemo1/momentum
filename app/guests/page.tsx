@@ -17,6 +17,10 @@ import { normalizeIsraeliPhone } from "@/lib/phone";
 import { ExpressSendModal } from "@/components/guests/ExpressSendModal";
 import { WhatsAppDeliveryPanel } from "@/components/guests/WhatsAppDeliveryPanel";
 import { BulkSendViaMomentumModal } from "@/components/guests/BulkSendViaMomentumModal";
+import { VoiceCampaignModal } from "@/components/guests/VoiceCampaignModal";
+import { WhatsAppRsvpModal } from "@/components/guests/WhatsAppRsvpModal";
+import { countVoiceEligible } from "@/hooks/useVoiceCampaign";
+import { countWhatsAppRsvpEligible } from "@/hooks/useWhatsAppRsvp";
 import { buildWhatsAppMessage } from "@/lib/rsvpLinks";
 import { useGuestWhatsappLink, prewarmGuestWhatsappLinks } from "@/hooks/useGuestWhatsappLink";
 import { trackEvent, trackFirstOnce } from "@/lib/analytics";
@@ -94,6 +98,8 @@ function GuestsPageInner() {
   const [showBulk, setShowBulk] = useState(false);
   const [showBulkMomentum, setShowBulkMomentum] = useState(false);
   const [showExpress, setShowExpress] = useState(false);
+  const [showVoice, setShowVoice] = useState(false);
+  const [showWhatsAppRsvp, setShowWhatsAppRsvp] = useState(false);
   const [filter, setFilter] = useState<"all" | GuestStatus>("all");
   const [search, setSearch] = useState("");
   const [importBusy, setImportBusy] = useState(false);
@@ -338,6 +344,8 @@ function GuestsPageInner() {
         (g) =>
           g.status === "pending" && normalizeIsraeliPhone(g.phone).valid,
       ).length,
+      voiceEligible: countVoiceEligible(state.guests, "not_confirmed"),
+      whatsappRsvpEligible: countWhatsAppRsvpEligible(state.guests, "not_confirmed"),
     };
   }, [state.guests]);
 
@@ -460,6 +468,28 @@ function GuestsPageInner() {
                   </button>
                 );
               })()}
+              {stats.whatsappRsvpEligible > 0 && (
+                <button
+                  onClick={() => setShowWhatsAppRsvp(true)}
+                  className="btn-secondary inline-flex items-center gap-2"
+                  title="שליחת תבנית WhatsApp רשמית עם כפתורי תגובה (Meta)"
+                >
+                  <Send size={18} />
+                  שלח אישורי הגעה (
+                  <span className="ltr-num">{stats.whatsappRsvpEligible}</span>)
+                </button>
+              )}
+              {stats.voiceEligible > 0 && (
+                <button
+                  onClick={() => setShowVoice(true)}
+                  className="btn-secondary inline-flex items-center gap-2"
+                  title="שיחות אוטומטיות קצרות לבדיקת הגעה (NLPearl)"
+                >
+                  <Phone size={18} />
+                  שיחות אוטומטיות (
+                  <span className="ltr-num">{stats.voiceEligible}</span>)
+                </button>
+              )}
               <button onClick={() => setShowAdd(true)} className="btn-gold inline-flex items-center gap-2">
                 <UserPlus size={18} />
                 מוזמן חדש
@@ -767,6 +797,26 @@ function GuestsPageInner() {
           event={state.event}
           origin={tryGetPublicOrigin()}
         />
+        {state.event && showWhatsAppRsvp && (
+          <ErrorBoundary section="whatsapp-rsvp">
+            <WhatsAppRsvpModal
+              open={showWhatsAppRsvp}
+              onClose={() => setShowWhatsAppRsvp(false)}
+              guests={state.guests}
+              event={state.event}
+            />
+          </ErrorBoundary>
+        )}
+        {state.event && showVoice && (
+          <ErrorBoundary section="voice-campaign">
+            <VoiceCampaignModal
+              open={showVoice}
+              onClose={() => setShowVoice(false)}
+              guests={state.guests}
+              event={state.event}
+            />
+          </ErrorBoundary>
+        )}
       </main>
     </>
   );

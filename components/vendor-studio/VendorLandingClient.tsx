@@ -411,7 +411,7 @@ function LeadInterestModal({
                 className="mt-2 text-sm"
                 style={{ color: "var(--foreground-soft)" }}
               >
-                לחצו "שלח" ב-WhatsApp כדי להעביר את ההודעה לספק.
+                לחצו &quot;שלח&quot; ב-WhatsApp כדי להעביר את ההודעה לספק.
               </p>
             </div>
           ) : (

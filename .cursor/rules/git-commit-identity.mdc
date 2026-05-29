@@ -1,0 +1,30 @@
+---
+description: Git commits in this repo must use the shared Osys Office identity (not personal email).
+alwaysApply: true
+---
+
+# Git commit identity (Momentum / Osys)
+
+When creating commits in **this repository**, always use the shared team identity:
+
+- **Name:** `Osys Office`
+- **Email:** `osys.office.abc@gmail.com`
+
+## Before committing
+
+1. Verify repo-local config (do not use global `git config` unless the user explicitly asks):
+   ```bash
+   git config user.email   # must be osys.office.abc@gmail.com
+   git config user.name    # must be Osys Office
+   ```
+2. If missing, set **local** config only:
+   ```bash
+   git config --local user.email "osys.office.abc@gmail.com"
+   git config --local user.name "Osys Office"
+   ```
+3. Never commit with personal emails (e.g. `mitakashimezukirin@gmail.com`) in this project.
+
+## Notes
+
+- Push auth may still use the developer's GitHub login; only **commit author** metadata should show Osys Office.
+- Do not amend or rewrite history to change author unless the user explicitly requests it.

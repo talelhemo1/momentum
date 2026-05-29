@@ -200,8 +200,7 @@ export function Header() {
   // it only fires when the boolean actually changes.
   useEffect(() => {
     let raf: number | null = null;
-    let current = window.scrollY > 40;
-    setScrolled(current);
+    let current = false;
     const tick = () => {
       raf = null;
       const next = window.scrollY > 40;
@@ -214,6 +213,7 @@ export function Header() {
       if (raf != null) return;
       raf = window.requestAnimationFrame(tick);
     };
+    raf = window.requestAnimationFrame(tick);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       window.removeEventListener("scroll", onScroll);

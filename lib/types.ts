@@ -80,6 +80,8 @@ export interface Guest {
   /** When the host sent a follow-up reminder. Used to gate "send reminder"
    *  buttons (no spamming guests more than once per 7 days). */
   reminderSentAt?: string;
+  /** When an automated WhatsApp RSVP template was sent (Business API). */
+  whatsappRsvpSentAt?: string;
   /** Additional guests beyond this one (default 0). Optional alias for
    *  `attendingCount - 1`; new RSVP code should write both. */
   plusOnes?: number;
@@ -450,6 +452,8 @@ export interface SavedVendor {
 }
 
 export interface AppState {
+  /** Bumped on every local mutation — used by cloud sync conflict resolution. */
+  updatedAt?: string;
   event: EventInfo | null;
   guests: Guest[];
   budget: BudgetItem[];

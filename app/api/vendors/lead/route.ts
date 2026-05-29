@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { notifyVendorOfNewLead } from "@/lib/vendorNotificationsRich";
+import { notifyVendorLeadViaWhatsApp } from "@/lib/whatsapp/vendorLead";
 import { normalizeIsraeliPhone } from "@/lib/phone";
 
 // R14.2 security — input caps. Sized to comfortably fit legit usage
@@ -206,7 +207,23 @@ export async function POST(req: NextRequest) {
       dashboardUrl,
     });
 
-    return NextResponse.json({ id: inserted?.id, vendor_name: landing.name });
+    if (safeVendorPhone) {
+      const digits = safeVendorPhone.replace(/\D/g, "");
+      void notifyVendorLeadViaWhatsApp({
+        userId: user.id,
+        vendorSlug: landing.slug,
+        vendorPhoneE164: digits,
+        coupleName: insertPayload.couple_name ?? "זוג",
+        couplePhone: couplePhoneNormalized ?? "—",
+        message: insertPayload.message,
+      });
+    }
+
+    return NextResponse.json({
+      id: inserted?.id,
+      vendor_name: landing.name,
+      whatsapp_notified: !!safeVendorPhone,
+    });
   } catch (e) {
     console.error("[/api/vendors/lead]", e);
     return NextResponse.json(

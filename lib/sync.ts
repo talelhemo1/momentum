@@ -209,18 +209,25 @@ export async function syncOnLogin(): Promise<{ source: "cloud" | "local" | "none
     let shouldOverwrite = true;
     if (localRaw) {
       try {
-        const localState = JSON.parse(localRaw) as AppState & { updatedAt?: string };
+        const localState = JSON.parse(localRaw) as AppState;
+        const localGuests = localState.guests?.length ?? 0;
+        const cloudGuests = cloudState.guests?.length ?? 0;
         const localUpdatedRaw = localState.updatedAt
           ?? localState.event?.createdAt
           ?? null;
         const localUpdated = localUpdatedRaw ? new Date(localUpdatedRaw).getTime() : 0;
         const cloudUpdated = cloudUpdatedAtIso ? new Date(cloudUpdatedAtIso).getTime() : 0;
-        // If the local copy is newer than the cloud copy by more than the
-        // grace window, the user almost certainly has offline edits. Keep
-        // them and push instead of overwriting.
-        if (localUpdated > cloudUpdated + SYNC_CONFLICT_GRACE_MS) {
+        // Never let an empty (or sparser) cloud row wipe a richer local guest list.
+        // Common case: user added guests locally but cloud push hadn't landed yet,
+        // or syncOnLogin runs before the debounced push completes on reload.
+        if (localGuests > cloudGuests) {
           shouldOverwrite = false;
-          // Mark a flag so the user (and devtools) can see we kept local.
+        } else if (localGuests > 0 && cloudGuests === 0) {
+          shouldOverwrite = false;
+        } else if (localUpdated > cloudUpdated + SYNC_CONFLICT_GRACE_MS) {
+          shouldOverwrite = false;
+        }
+        if (!shouldOverwrite) {
           try {
             window.localStorage.setItem(PENDING_UPSERT_FLAG_KEY, String(localUpdated));
           } catch {
@@ -228,7 +235,8 @@ export async function syncOnLogin(): Promise<{ source: "cloud" | "local" | "none
           }
           scheduleCloudUpsert();
           console.warn(
-            "[sync] local edits newer than cloud — kept local, scheduled upsert",
+            "[sync] kept local state over cloud",
+            { localGuests, cloudGuests, localUpdated, cloudUpdated },
           );
         }
       } catch {

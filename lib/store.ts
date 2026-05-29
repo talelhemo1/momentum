@@ -230,20 +230,24 @@ async function mintSigningKeyAtomic(): Promise<void> {
 
 function writeState(state: AppState) {
   if (typeof window === "undefined") return;
+  const stamped: AppState = {
+    ...state,
+    updatedAt: new Date().toISOString(),
+  };
   // Wrap the write so a quota-exceeded error (private mode, very full
   // storage, browser eviction) doesn't take down the calling action and
   // leave the UI in a half-applied state. We still update the in-memory
   // cache and dispatch the event — the UI stays consistent with what the
   // user just did, even if the persisted copy fell behind.
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stamped));
   } catch (e) {
     console.error("[momentum/store] localStorage write failed (state held in memory only):", e);
   }
   // Cache invalidation so the next getSnapshot() picks up the change.
   // useSyncExternalStore tears if getSnapshot returns a new object reference
   // for unchanged data, so we read-through a stable cache.
-  cachedSnapshot = state;
+  cachedSnapshot = stamped;
   window.dispatchEvent(new CustomEvent("momentum:update"));
 }
 
@@ -533,6 +537,24 @@ export const actions = {
       guests: s.guests.map((g) =>
         g.id === id
           ? { ...g, status: "invited", invitedAt: new Date().toISOString() }
+          : g,
+      ),
+    });
+  },
+  markWhatsAppRsvpSent(ids: string[]) {
+    const s = readState();
+    const idSet = new Set(ids);
+    const now = new Date().toISOString();
+    writeState({
+      ...s,
+      guests: s.guests.map((g) =>
+        idSet.has(g.id)
+          ? {
+              ...g,
+              status: g.status === "pending" ? "invited" : g.status,
+              invitedAt: g.invitedAt ?? now,
+              whatsappRsvpSentAt: now,
+            }
           : g,
       ),
     });
