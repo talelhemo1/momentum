@@ -452,8 +452,6 @@ export interface SavedVendor {
 }
 
 export interface AppState {
-  /** Bumped on every local mutation — used by cloud sync conflict resolution. */
-  updatedAt?: string;
   event: EventInfo | null;
   guests: Guest[];
   budget: BudgetItem[];
@@ -485,6 +483,15 @@ export interface AppState {
   blessings: Blessing[];
   /** Photos uploaded in live mode. Same lifecycle as blessings. */
   livePhotos: LivePhoto[];
+  /**
+   * ISO timestamp of the last LOCAL mutation. Stamped by `writeState`
+   * (lib/store.ts) on every write. `syncOnLogin` (lib/sync.ts) compares
+   * it against the cloud row's `updated_at` to detect offline edits that
+   * are newer than the cloud copy — without it that conflict check fell
+   * back to `event.createdAt` (fixed at creation), so offline edits were
+   * silently overwritten by older cloud data on the next login.
+   */
+  updatedAt?: string;
 }
 
 // ───────────────────────── Momentum Live (R20) ───────────────────────────

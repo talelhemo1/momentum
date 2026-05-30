@@ -155,8 +155,12 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[api/rsvp/confirm] exception:", msg);
+    // Don't echo the raw Twilio/Resend error back to the (anonymous) caller
+    // — it can leak integration internals like rate-limit state or config
+    // hints. It's already logged server-side above; the client only needs
+    // the generic failure code (and this path is fire-and-forget anyway).
     return NextResponse.json(
-      { ok: false, error: "internal", detail: msg.slice(0, 200) },
+      { ok: false, error: "internal" },
       { status: 500 },
     );
   }

@@ -103,9 +103,17 @@ function RsvpInner() {
     const verification: Promise<boolean> = eventIdMatches
       ? verifyRsvpToken(tokenQuery.token, tokenQuery.eventId, tokenQuery.guestId, state.event.signingKey)
       : Promise.resolve(false);
-    void verification.then((ok) => {
-      if (!cancelled) setTokenOk(ok);
-    });
+    verification
+      .then((ok) => {
+        if (!cancelled) setTokenOk(ok);
+      })
+      .catch(() => {
+        // crypto.subtle can reject on a malformed key/token. Without this
+        // catch the promise rejects unhandled, setTokenOk never fires, and
+        // the guest is stranded on the loading skeleton forever. Treat any
+        // verification error as a failed (invalid) link instead.
+        if (!cancelled) setTokenOk(false);
+      });
     return () => { cancelled = true; };
   }, [tokenQuery, state.event?.signingKey, state.event?.id]);
 

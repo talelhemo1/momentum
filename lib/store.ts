@@ -230,10 +230,13 @@ async function mintSigningKeyAtomic(): Promise<void> {
 
 function writeState(state: AppState) {
   if (typeof window === "undefined") return;
-  const stamped: AppState = {
-    ...state,
-    updatedAt: new Date().toISOString(),
-  };
+  // Stamp the local edit time on every write. `syncOnLogin` uses this to
+  // tell genuinely-newer offline edits apart from a stale local copy when
+  // it reconciles against the cloud row — without it the conflict check
+  // fell back to `event.createdAt` (fixed at creation), so the "keep newer
+  // local edits" branch never fired and offline edits could be overwritten
+  // by an older cloud payload on the next login.
+  const stamped: AppState = { ...state, updatedAt: new Date().toISOString() };
   // Wrap the write so a quota-exceeded error (private mode, very full
   // storage, browser eviction) doesn't take down the calling action and
   // leave the UI in a half-applied state. We still update the in-memory
