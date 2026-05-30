@@ -181,9 +181,52 @@ export function mapVoiceCallToRsvp(input: {
   };
 }
 
-/** Guests eligible for outbound RSVP calls (client: not confirmed + valid phone). */
+/** Generic "not yet confirmed" predicate. Shared by the WhatsApp-RSVP send
+ *  flow (where it's the right check) and as the base for richer gates. NOT
+ *  sufficient on its own for VOICE calls — use isGuestEligibleForVoiceCampaign
+ *  for those (it adds the "ignored ≥2 messages" cost gate). */
 export function isGuestEligibleForVoiceCall(status: GuestStatus): boolean {
   return status !== "confirmed";
 }
 
 export type VoiceCampaignScope = "not_confirmed" | "all_with_phone";
+
+/** Minimum outreach messages (invite + reminders / RSVP template) a guest must
+ *  have received before an automated VOICE call is permitted. Voice calls cost
+ *  real money, so they're a last resort for true non-responders — never a free
+ *  "call everyone" broadcast. */
+export const VOICE_MIN_MESSAGES = 2;
+
+/** The per-guest signals the voice gate inspects. A subset of `Guest`, so both
+ *  the client (full Guest) and the API route (trimmed payload) can pass it. */
+export interface VoiceCallGuestSignals {
+  status: GuestStatus;
+  invitedAt?: string | null;
+  reminderSentAt?: string | null;
+  whatsappRsvpSentAt?: string | null;
+}
+
+/** How many distinct outreach touchpoints we've recorded for a guest
+ *  (invitation, reminder, automated WhatsApp RSVP template). */
+export function guestMessagesSent(g: VoiceCallGuestSignals): number {
+  return [g.invitedAt, g.reminderSentAt, g.whatsappRsvpSentAt].filter(Boolean)
+    .length;
+}
+
+/**
+ * VOICE-campaign eligibility — deliberately stricter than
+ * `isGuestEligibleForVoiceCall`. A guest may be auto-called ONLY when:
+ *   1. they still haven't answered at all — not confirmed, declined, OR maybe
+ *      ("maybe"/"declined" already replied, so calling them wastes money), AND
+ *   2. they've already been sent at least VOICE_MIN_MESSAGES messages
+ *      (e.g. an invite + a reminder) and ignored them.
+ * This is the gate that stops hosts from calling everyone whenever they want.
+ */
+export function isGuestEligibleForVoiceCampaign(
+  g: VoiceCallGuestSignals,
+): boolean {
+  const answered =
+    g.status === "confirmed" || g.status === "declined" || g.status === "maybe";
+  if (answered) return false;
+  return guestMessagesSent(g) >= VOICE_MIN_MESSAGES;
+}

@@ -109,6 +109,17 @@ export async function deleteCloudData(): Promise<boolean> {
   }
 }
 
+/**
+ * Awaited, one-shot flush of the current localStorage AppState to the cloud.
+ * Exposed so the logout path can GUARANTEE the latest local edits are saved
+ * before localStorage is purged (otherwise an event/guests/seating created in
+ * the last few hundred ms — before the debounced push fired — would be lost).
+ * Must be called while the user is still authenticated (before auth signOut).
+ */
+export function flushToCloud(): Promise<boolean> {
+  return pushToCloud();
+}
+
 async function pushToCloud(): Promise<boolean> {
   const supabase = getSupabase();
   if (!supabase) return false;

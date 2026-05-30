@@ -2,7 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { getSupabase, SUPABASE_ENABLED } from "./supabase";
-import { syncOnLogin } from "./sync";
+import { syncOnLogin, flushToCloud } from "./sync";
 import { STORAGE_KEYS } from "./storage-keys";
 import { normalizeIsraeliPhone } from "./phone";
 
@@ -316,18 +316,22 @@ export const userActions = {
    */
   signOutAndRedirect(target = "/") {
     if (typeof window === "undefined") return;
-    // Best-effort signOut. We do NOT await it — if it hangs we still
-    // bounce the user. Errors are swallowed (already logged inside
-    // signOut() itself).
-    void this.signOut().catch(() => {});
-    // Belt-and-suspenders: if the navigation below somehow gets
-    // queued behind the in-flight fetch, fire it again after 1.5s.
-    window.setTimeout(() => {
-      if (window.location.pathname !== target) {
-        window.location.href = target;
-      }
-    }, 1500);
-    window.location.href = target;
+    let navigated = false;
+    const go = () => {
+      if (navigated) return;
+      navigated = true;
+      window.location.href = target;
+    };
+    // Navigate only AFTER signOut() resolves. signOut() FIRST flushes the
+    // local AppState to the cloud (data safety) and THEN purges localStorage;
+    // navigating immediately (the old behavior) unloaded the page and
+    // cancelled that flush, so a freshly-created event/guest list could be
+    // lost on logout. signOut() is internally bounded (2.5s flush race +
+    // fast local-scope auth revoke), so this resolves in well under a second
+    // on a normal connection.
+    void this.signOut().catch(() => {}).finally(go);
+    // Hard fallback: never leave the user stuck mid-logout if signOut hangs.
+    window.setTimeout(go, 4000);
   },
 
   async signOut() {
@@ -343,12 +347,31 @@ export const userActions = {
     // token.
     //
     // Order:
+    //   0. FLUSH local state to the cloud (CRITICAL — data safety).
     //   1. Try the official signOut (revokes server-side session).
     //   2. Sweep every `sb-*-auth-token` / pkce-verifier key.
     //   3. Clear our local user record + admin cache hint.
     //   Caller does window.location.href = "/" for a hard reload so
     //   no in-memory state survives.
     const supabase = getSupabase();
+
+    // STEP 0 — guarantee the latest local AppState (event, guests, seating,
+    // budget…) is in the cloud BEFORE we (a) revoke the session and (b) wipe
+    // `momentum.app.v1` below. Without this, edits made in the last few
+    // hundred ms — before the debounced sync push (800ms) fired — are lost
+    // forever: the page unloads on redirect (cancelling any in-flight push)
+    // and then the purge removes the only remaining copy. The flush MUST run
+    // while still authenticated (it calls auth.getUser()), so it goes before
+    // auth.signOut(). Bounded by a race so a dead network can't hang logout.
+    try {
+      await Promise.race([
+        flushToCloud(),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2500)),
+      ]);
+    } catch (e) {
+      console.error("[momentum/user] pre-logout cloud flush failed", e);
+    }
+
     if (supabase) {
       try {
         await supabase.auth.signOut({ scope: "local" });

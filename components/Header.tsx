@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   Briefcase,
-  CreditCard,
   HelpCircle,
   LogOut,
   Mail,
@@ -26,7 +25,6 @@ import { Avatar } from "./Avatar";
 // R90 — ChatBell removed (in-app chat retired).
 import { NotificationsBell } from "./NotificationsBell";
 import { EventSwitcher } from "./EventSwitcher";
-import { UpgradePlanModal } from "./UpgradePlanModal";
 import { DeleteEventModal } from "./DeleteEventModal";
 import { useTheme } from "@/lib/theme";
 import { useUser, userActions } from "@/lib/user";
@@ -327,7 +325,6 @@ export function Header() {
               className="hidden md:flex items-center gap-1 ms-2"
             >
               <LandingAnchor href="#showcase" label="תכונות" />
-              <LandingAnchor href="#pricing" label="השקה חינמית" />
             </nav>
           )}
         </div>
@@ -800,7 +797,6 @@ function AvatarMenu({
   onSignOut: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [showUpgrade, setShowUpgrade] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -852,21 +848,6 @@ function AvatarMenu({
             <Avatar name={name} size={36} />
             <div className="flex-1 min-w-0">
               <div className="font-bold text-sm truncate">{name}</div>
-              <div
-                className="text-[11px] flex items-center gap-1.5 mt-0.5"
-                style={{ color: "var(--foreground-muted)" }}
-              >
-                <span
-                  className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                  style={{
-                    background: "color-mix(in srgb, var(--accent) 15%, transparent)",
-                    color: "var(--accent)",
-                  }}
-                >
-                  חינם
-                </span>
-                <span>שדרג למסלול פרימיום</span>
-              </div>
             </div>
           </div>
 
@@ -893,29 +874,6 @@ function AvatarMenu({
               label="הגדרות"
               onClick={() => setOpen(false)}
             />
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                setShowUpgrade(true);
-              }}
-              role="menuitem"
-              className="w-full flex items-center gap-2.5 mx-1.5 px-3 py-2.5 text-sm rounded-lg transition hover:bg-[var(--secondary-button-bg)]"
-              style={{ color: "var(--foreground-soft)", width: "calc(100% - 12px)" }}
-            >
-              <CreditCard size={15} aria-hidden />
-              <span className="flex-1 text-start">מסלול ותשלומים</span>
-              <span
-                className="text-[10px] font-bold rounded-full px-1.5 py-0.5"
-                style={{
-                  background:
-                    "linear-gradient(135deg, var(--gold-100), var(--gold-500))",
-                  color: "var(--background)",
-                }}
-              >
-                שדרג
-              </span>
-            </button>
             {unread > 0 && (
               <AvatarMenuLink
                 href="/inbox"
@@ -987,9 +945,6 @@ function AvatarMenu({
         </div>
       )}
 
-      {showUpgrade && (
-        <UpgradePlanModal onClose={() => setShowUpgrade(false)} />
-      )}
       {showDelete && (
         <DeleteEventModal onClose={() => setShowDelete(false)} />
       )}

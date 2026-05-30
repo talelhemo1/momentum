@@ -346,7 +346,7 @@ function GuestsPageInner() {
         (g) =>
           g.status === "pending" && normalizeIsraeliPhone(g.phone).valid,
       ).length,
-      voiceEligible: countVoiceEligible(state.guests, "not_confirmed"),
+      voiceEligible: countVoiceEligible(state.guests),
       whatsappRsvpEligible: countWhatsAppRsvpEligible(state.guests, "not_confirmed"),
     };
   }, [state.guests]);
@@ -485,10 +485,10 @@ function GuestsPageInner() {
                 <button
                   onClick={() => setShowVoice(true)}
                   className="btn-secondary inline-flex items-center gap-2"
-                  title="שיחות אוטומטיות קצרות לבדיקת הגעה (NLPearl)"
+                  title="שיחות אוטומטיות רק למי שלא ענה אחרי 2 הודעות (NLPearl)"
                 >
                   <Phone size={18} />
-                  שיחות אוטומטיות (
+                  שיחות למי שלא ענה (
                   <span className="ltr-num">{stats.voiceEligible}</span>)
                 </button>
               )}

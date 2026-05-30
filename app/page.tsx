@@ -7,7 +7,6 @@ import { PainSection } from "@/components/landing/PainSection";
 import { SolutionSection } from "@/components/landing/SolutionSection";
 import { FeatureGrid } from "@/components/landing/FeatureGrid";
 import { AppShowcase } from "@/components/landing/AppShowcase";
-import { PricingSection } from "@/components/landing/PricingSection";
 import { TrustSection } from "@/components/landing/TrustSection";
 import { HonestStats } from "@/components/landing/HonestStats";
 import { FAQ } from "@/components/landing/FAQ";
@@ -50,6 +49,29 @@ import { FinalCTA } from "@/components/landing/FinalCTA";
 const REDIRECT_SCRIPT = `
 (function(){
   try {
+    // ── OAuth / email-verify rescue ──────────────────────────────────
+    // Supabase finishes OAuth (Google/Apple) and magic-link verification by
+    // redirecting to a URL. When the project's "Redirect URLs" allowlist
+    // doesn't include /auth/callback, Supabase falls back to the SITE URL —
+    // which is the landing root ("/"). The login credentials (?code=… for
+    // PKCE, #access_token=… for implicit, ?token_hash=… for email) then sit
+    // UNPROCESSED on the landing page, so the user appears to "bounce back to
+    // the homepage without being logged in".
+    //
+    // Forward those params to our real handler (/auth/callback). It's the
+    // SAME origin, so the PKCE code-verifier stored in localStorage is intact
+    // and exchangeCodeForSession() works. Runs first, synchronously, before
+    // supabase-js initializes — so there's no race and no flash.
+    var s = window.location.search || "";
+    var h = window.location.hash || "";
+    if (
+      /[?&](code|token_hash|error_description)=/.test(s) ||
+      /[#&](access_token|error_description)=/.test(h)
+    ) {
+      location.replace("/auth/callback" + s + h);
+      return;
+    }
+
     var hasSession = false;
     for (var i = 0; i < localStorage.length; i++) {
       var k = localStorage.key(i);
@@ -84,7 +106,7 @@ const REDIRECT_SCRIPT = `
 /**
  * R42 — premium landing page. Composition only; each section is its own
  * component under components/landing/. Order is conversion-tuned:
- * hook → pain → solution → proof → PRICE → trust → objections → close.
+ * hook → pain → solution → proof → trust → objections → close.
  */
 export default async function LandingPage() {
   const nonce = (await headers()).get("x-nonce") ?? "";
@@ -106,7 +128,6 @@ export default async function LandingPage() {
         <SolutionSection />
         <FeatureGrid />
         <AppShowcase />
-        <PricingSection />
         <TrustSection />
         <HonestStats />
         <FAQ />

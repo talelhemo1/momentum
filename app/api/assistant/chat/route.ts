@@ -152,9 +152,7 @@ export async function POST(req: NextRequest) {
           if (used >= dailyQuota) {
             return NextResponse.json(
               {
-                error: isPremium
-                  ? `הגעת למכסה היומית (${dailyQuota} שאלות). תוכל להמשיך מחר.`
-                  : `הגעת למכסה היומית של ${dailyQuota} שאלות. שדרג לפרימיום ל-${PREMIUM_DAILY_QUOTA} ביום.`,
+                error: `הגעת למכסה היומית (${dailyQuota} שאלות). תוכל להמשיך מחר.`,
                 remainingQuota: 0,
                 quotaExhausted: true,
               },
