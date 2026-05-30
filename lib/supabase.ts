@@ -30,6 +30,13 @@ export function getSupabase(): SupabaseClient | null {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      // Force PKCE so OAuth (Google/Apple) + magic links always return a
+      // `?code=` we exchange on /auth/callback. The supabase-js default has
+      // drifted between "implicit" (#access_token in the hash) and "pkce"
+      // across versions; pinning it keeps the return shape consistent with
+      // the callback handler and avoids "logged in via Google but bounced
+      // back to the homepage" when the hash flow lands somewhere unhandled.
+      flowType: "pkce",
     },
     realtime: { params: { eventsPerSecond: 2 } },
   });

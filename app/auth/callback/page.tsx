@@ -108,21 +108,40 @@ function CallbackInner() {
       const tokenHash = search.get("token_hash");
       const otpType = search.get("type");
       if (code) {
-        const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code);
-        if (cancelled) return;
-        if (exchangeErr) {
-          // R12 §1F — Supabase auth errors can include token fragments
-          // or "User from sub claim..." style internals. Show a static
-          // Hebrew message; full error stays in console for devs.
-          console.error("[auth/callback] exchangeCodeForSession", exchangeErr);
-          void logError({
-            type: "auth",
-            message: `exchangeCodeForSession: ${exchangeErr.message}`,
-            url: window.location.origin + "/auth/callback",
-          });
-          setErrorMessage("לא הצלחנו לאמת את ההתחברות. נסה להתחבר שוב.");
-          setStatus("error");
-          return;
+        // IDEMPOTENT exchange. An auth code is single-use, but it can get
+        // hit twice: `detectSessionInUrl` may auto-exchange it, and React
+        // StrictMode re-runs this effect in dev. Without this guard the
+        // SECOND attempt fails with "code already used" and we'd show an
+        // error — even though the FIRST attempt already logged the user in.
+        // So: if a session already exists, skip; and if the exchange errors
+        // but a session DID land, treat it as success.
+        const { data: pre } = await supabase.auth.getSession();
+        if (!pre.session) {
+          const { error: exchangeErr } =
+            await supabase.auth.exchangeCodeForSession(code);
+          if (cancelled) return;
+          if (exchangeErr) {
+            const { data: post } = await supabase.auth.getSession();
+            if (!post.session) {
+              // R12 §1F — Supabase auth errors can include token fragments
+              // or "User from sub claim..." style internals. Show a static
+              // Hebrew message; full error stays in console for devs.
+              console.error("[auth/callback] exchangeCodeForSession", exchangeErr);
+              void logError({
+                type: "auth",
+                message: `exchangeCodeForSession: ${exchangeErr.message}`,
+                url: window.location.origin + "/auth/callback",
+              });
+              setErrorMessage("לא הצלחנו לאמת את ההתחברות. נסה להתחבר שוב.");
+              setStatus("error");
+              return;
+            }
+            // A parallel run consumed the code but the session landed —
+            // fall through as success.
+            console.warn(
+              "[auth/callback] code already consumed but session present — continuing",
+            );
+          }
         }
       } else if (tokenHash && otpType) {
         // Email link landed here directly instead of via /auth/confirm.
