@@ -571,7 +571,7 @@ function VendorsInner() {
                 // in that row. Combined with min-h + line-clamp on
                 // the card body, every tile is EXACTLY the same size.
                 style={{ gridAutoRows: "1fr" }}
-                className="mt-4 grid gap-5 md:grid-cols-2 lg:grid-cols-3"
+                className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-3 lg:gap-6"
               >
                 <AnimatePresence mode="popLayout">
                   {visible.map((vendor, i) => (
