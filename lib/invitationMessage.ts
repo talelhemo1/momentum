@@ -16,7 +16,7 @@ export const EVENT_TYPE_EMOJI: Record<EventType, string> = {
   brit: "👶",
   birthday: "🎂",
   corporate: "🎉",
-  other: "✨",
+  henna: "🌿",
 };
 
 export function buildWhatsappInviteMessage(input: {

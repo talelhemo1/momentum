@@ -147,6 +147,37 @@ export const VENDOR_IMAGES: Record<VendorType, string[]> = {
     u("1517242810446-cc8951b2be40", 800, 600),
     u("1516205651411-aef33a44f7c2", 800, 600),
   ],
+  // ─── Henna / Mizrahi & richer celebration categories (2026) ───
+  // Same approach as the 2026 expansion above: reuse curated event-context
+  // IDs (music, dessert, attire stacks) so we don't ship new external image
+  // dependencies. vendorImageFor only uses these as a fallback when a
+  // vendor hasn't uploaded their own photo.
+  bouzouki: [
+    u("1501386761578-eac5c94b800a", 800, 600),
+    u("1429962714451-bb934ecdc4ec", 800, 600),
+  ],
+  trumpet: [
+    u("1501386761578-eac5c94b800a", 800, 600),
+    u("1493225457124-a3eb161ffa5f", 800, 600),
+  ],
+  "dessert-station": [
+    u("1486427944299-d1955d23e34d", 800, 600),
+    u("1551024601-bec78aea704b", 800, 600),
+    u("1567620905732-2d1ec7ab7445", 800, 600),
+  ],
+  "henna-cookies": [
+    u("1486427944299-d1955d23e34d", 800, 600),
+    u("1567620905732-2d1ec7ab7445", 800, 600),
+  ],
+  producer: [
+    u("1505236858219-8359eb29e329", 800, 600),
+    u("1470229722913-7c0e2dbbafd3", 800, 600),
+    u("1519225421980-715cb0215aed", 800, 600),
+  ],
+  costumes: [
+    u("1606216794074-735e91aa2c92", 800, 600),
+    u("1519741497674-611481863552", 800, 600),
+  ],
 };
 
 /** Pick an image deterministically by index — keeps card images stable across renders. */
@@ -191,5 +222,5 @@ export const EVENT_HERO_IMAGE: Record<EventType, string> = {
   engagement: u("1606216794074-735e91aa2c92", 1400, 700),
   birthday: u("1464366400600-7168b8af9bc3", 1400, 700),
   corporate: u("1505236858219-8359eb29e329", 1400, 700),
-  other: u("1464366400600-7168b8af9bc3", 1400, 700),
+  henna: u("1464366400600-7168b8af9bc3", 1400, 700),
 };

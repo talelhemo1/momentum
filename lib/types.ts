@@ -7,7 +7,7 @@ export type EventType =
   | "brit"
   | "birthday"
   | "corporate"
-  | "other";
+  | "henna";
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   wedding: "חתונה",
@@ -18,7 +18,7 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   brit: "ברית",
   birthday: "יום הולדת",
   corporate: "אירוע עסקי",
-  other: "אחר",
+  henna: "חינה",
 };
 
 export type Region =
@@ -182,7 +182,14 @@ export type VendorType =
   | "photobooth"
   | "hosting"
   // R11 — print houses (separate from "stationery" which covers design/digital).
-  | "printing";
+  | "printing"
+  // ─── Henna / Mizrahi & richer celebration categories (2026) ───
+  | "bouzouki"
+  | "trumpet"
+  | "dessert-station"
+  | "henna-cookies"
+  | "producer"
+  | "costumes";
 
 export const VENDOR_TYPE_LABELS: Record<VendorType, string> = {
   venue: "אולמות וגני אירועים",
@@ -213,6 +220,12 @@ export const VENDOR_TYPE_LABELS: Record<VendorType, string> = {
   photobooth: "מתחם צילום",
   hosting: "מנחי טקס / MC",
   printing: "בתי דפוס",
+  bouzouki: "נגני בוזוקי",
+  trumpet: "נגני חצוצרה",
+  "dessert-station": "עמדות מתוקים",
+  "henna-cookies": "עוגיות לחינה",
+  producer: "מפיקי אירועים",
+  costumes: "תלבושות וקפטנים",
 };
 
 export interface Vendor {

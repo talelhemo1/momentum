@@ -46,10 +46,12 @@ export interface JourneyStepStatus {
 
 export function getJourneyForState(state: AppState): JourneyStepStatus[] {
   const type = state.event?.type ?? "wedding";
-  // R17: some event types (e.g. "other", or any future enum value seeded
-  // before its config landed) won't have an entry in EVENT_CONFIG. Fall
-  // back to the wedding journey rather than crashing on `.journey` of
-  // undefined — every page that renders the journey expects a valid array.
+  // R17: some event types won't have an entry in EVENT_CONFIG — e.g. the
+  // legacy "other" type (renamed to "henna"), so events created before the
+  // rename still carry the old value, or any future enum value seeded
+  // before its config landed. Fall back to the wedding journey rather than
+  // crashing on `.journey` of undefined — every page that renders the
+  // journey expects a valid array.
   const steps = (EVENT_CONFIG[type] ?? EVENT_CONFIG.wedding).journey;
   return steps.map((def, i) => ({
     def,

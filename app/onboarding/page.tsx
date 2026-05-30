@@ -45,7 +45,7 @@ const EVENT_OPTIONS: { value: EventType; icon: React.ReactNode }[] = [
   { value: "brit", icon: <Baby size={22} /> },
   { value: "birthday", icon: <Cake size={22} /> },
   { value: "corporate", icon: <Briefcase size={22} /> },
-  { value: "other", icon: <Sparkles size={22} /> },
+  { value: "henna", icon: <Sparkles size={22} /> },
 ];
 
 export default function OnboardingPage() {

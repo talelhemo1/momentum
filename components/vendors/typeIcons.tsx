@@ -27,6 +27,9 @@ import {
   Martini,
   ScanLine,
   Megaphone,
+  Guitar,
+  Cookie,
+  ClipboardList,
 } from "lucide-react";
 import type { VendorType } from "@/lib/types";
 
@@ -93,6 +96,18 @@ export function vendorTypeIcon(type: VendorType, size = 20): React.ReactNode {
       return <ScanLine {...props} />;
     case "hosting":
       return <Megaphone {...props} />;
+    case "bouzouki":
+      return <Guitar {...props} />;
+    case "trumpet":
+      return <Music {...props} />;
+    case "dessert-station":
+      return <Cake {...props} />;
+    case "henna-cookies":
+      return <Cookie {...props} />;
+    case "producer":
+      return <ClipboardList {...props} />;
+    case "costumes":
+      return <Shirt {...props} />;
   }
 }
 

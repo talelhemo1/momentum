@@ -717,6 +717,15 @@ const VENDOR_TO_BUDGET_CATEGORY: Record<VendorType, BudgetCategory> = {
   hosting: "music",
   // R11 — print houses bucket into "invitations" alongside stationery.
   printing: "invitations",
+  // Henna / Mizrahi & richer celebration categories (2026). Musicians →
+  // music; food stations → catering; costumes → attire; producers have no
+  // dedicated line so they sit in "other".
+  bouzouki: "music",
+  trumpet: "music",
+  "dessert-station": "catering",
+  "henna-cookies": "catering",
+  costumes: "attire",
+  producer: "other",
 };
 
 export function getStateSnapshot(): AppState {
