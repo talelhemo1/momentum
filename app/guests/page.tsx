@@ -21,6 +21,7 @@ import { VoiceCampaignModal } from "@/components/guests/VoiceCampaignModal";
 import { WhatsAppRsvpModal } from "@/components/guests/WhatsAppRsvpModal";
 import { countVoiceEligible } from "@/hooks/useVoiceCampaign";
 import { countWhatsAppRsvpEligible } from "@/hooks/useWhatsAppRsvp";
+import { BulkReminderViaMomentumModal } from "@/components/guests/BulkReminderViaMomentumModal";
 import { buildWhatsAppMessage } from "@/lib/rsvpLinks";
 import { useGuestWhatsappLink, prewarmGuestWhatsappLinks } from "@/hooks/useGuestWhatsappLink";
 import { trackEvent, trackFirstOnce } from "@/lib/analytics";
@@ -97,6 +98,7 @@ function GuestsPageInner() {
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [showBulkMomentum, setShowBulkMomentum] = useState(false);
+  const [showBulkReminder, setShowBulkReminder] = useState(false);
   const [showExpress, setShowExpress] = useState(false);
   const [showVoice, setShowVoice] = useState(false);
   const [showWhatsAppRsvp, setShowWhatsAppRsvp] = useState(false);
@@ -490,6 +492,23 @@ function GuestsPageInner() {
                   <span className="ltr-num">{stats.voiceEligible}</span>)
                 </button>
               )}
+              {/* R94 — manual reminder to guests who already CONFIRMED.
+                  Renders only when there's at least one confirmed guest
+                  with a phone; the daily cron handles the automatic
+                  7-day / 1-day nudges, this is the host's "remind now". */}
+              {state.guests.some(
+                (g) => g.status === "confirmed" && g.phone,
+              ) && (
+                <button
+                  type="button"
+                  onClick={() => setShowBulkReminder(true)}
+                  className="btn-secondary inline-flex items-center gap-2"
+                  title="שלח תזכורת WhatsApp לכל מי שכבר אישר הגעה"
+                >
+                  <MessageCircle size={18} />
+                  🔔 שלח תזכורת לאורחים שאישרו
+                </button>
+              )}
               <button onClick={() => setShowAdd(true)} className="btn-gold inline-flex items-center gap-2">
                 <UserPlus size={18} />
                 מוזמן חדש
@@ -788,6 +807,16 @@ function GuestsPageInner() {
               (g) => g.status === "pending" && g.phone,
             )}
             onClose={() => setShowBulkMomentum(false)}
+          />
+        )}
+        {showBulkReminder && state.event && (
+          <BulkReminderViaMomentumModal
+            origin={tryGetPublicOrigin()}
+            event={state.event}
+            candidates={state.guests.filter(
+              (g) => g.status === "confirmed" && g.phone,
+            )}
+            onClose={() => setShowBulkReminder(false)}
           />
         )}
         <ExpressSendModal

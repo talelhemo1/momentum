@@ -95,3 +95,49 @@ export function buildRsvpReminderVariables(
 export function hasRsvpReminderTemplate(): boolean {
   return RSVP_REMINDER_TEMPLATE_SID.startsWith("HX");
 }
+
+/**
+ * R94 — `event_update_he` template. Sent to guests who have ALREADY
+ * confirmed, to (a) remind them the event is near (cron: 7-day + 1-day),
+ * and (b) let the host push a manual update from the dashboard. Same
+ * 5-variable shape as the invitation template so the approved Meta
+ * content can reuse familiar positional slots ({{1}}..{{5}}).
+ */
+export const EVENT_UPDATE_TEMPLATE_SID: string =
+  process.env.NEXT_PUBLIC_TWILIO_TEMPLATE_EVENT_UPDATE_SID ?? "";
+
+/** True when the event-update template SID is configured. Callers MUST
+ *  check this before sending — without an approved template, WhatsApp
+ *  silently drops messages sent outside the 24h window. */
+export function hasEventUpdateTemplate(): boolean {
+  return EVENT_UPDATE_TEMPLATE_SID.startsWith("HX");
+}
+
+export interface EventUpdateVars {
+  /** Guest first name — {{1}} */
+  guestName: string;
+  /** Host names — {{2}} */
+  hostNames: string;
+  /** Formatted (Hebrew) date string — {{3}} */
+  date: string;
+  /** Venue + city — {{4}} */
+  venue: string;
+  /** Bare RSVP / details URL — {{5}} */
+  rsvpUrl: string;
+}
+
+/** Build the positional `variables` map for the event-update template.
+ *  Mirrors `buildGuestInvitationVariables`: defensive trim + truncate
+ *  (R118) so long names / multi-word venues don't trip Meta's silent
+ *  per-variable length cap (error 63020). */
+export function buildEventUpdateVariables(
+  vars: EventUpdateVars,
+): Record<string, string> {
+  return {
+    "1": (vars.guestName ?? "").trim().slice(0, 60) || "אורח",
+    "2": (vars.hostNames ?? "").trim().slice(0, 60) || "המשפחה",
+    "3": (vars.date ?? "").trim().slice(0, 40) || "פרטים בלינק",
+    "4": (vars.venue ?? "").trim().slice(0, 100) || "פרטים בלינק",
+    "5": (vars.rsvpUrl ?? "").trim().slice(0, 200),
+  };
+}

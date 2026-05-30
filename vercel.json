@@ -44,6 +44,9 @@
     },
     "app/api/send-scheduled/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/cron/event-reminders/route.ts": {
+      "maxDuration": 60
     }
   },
 
@@ -58,6 +61,10 @@
     },
     {
       "path": "/api/cron/whatsapp-voice-fallback",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/event-reminders",
       "schedule": "0 10 * * *"
     }
   ],
