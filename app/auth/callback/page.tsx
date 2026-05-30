@@ -36,9 +36,11 @@ function CallbackInner() {
   useEffect(() => {
     let cancelled = false;
 
-    // R12 §3R — hard timeout. If supabase-js takes longer than 12s to
-    // resolve a session (network blip, mis-routed callback URL), bail
-    // with a friendly message instead of leaving the user on a spinner.
+    // R145 — extended to 25s. supabase-js's token exchange + the cloud
+    // hydration that follows are network-bound; on a slow connection 12s
+    // could fire even though the login was still in flight. 25s is the
+    // sweet spot — long enough for real-world networks, short enough to
+    // bail before the user gives up and refreshes.
     const timeoutId = window.setTimeout(() => {
       if (cancelled) return;
       cancelled = true;
@@ -46,7 +48,7 @@ function CallbackInner() {
         "האימות לוקח יותר מהרגיל. נסה לרענן או להתחבר שוב.",
       );
       setStatus("error");
-    }, 12000);
+    }, 25000);
 
     const finish = async () => {
       // R47 — structured client log for the domain-migration debug.
@@ -100,44 +102,57 @@ function CallbackInner() {
         return;
       }
 
-      // 3a. Explicit handlers for the two PKCE-style returns. These are
-      //     belt-and-suspenders alongside `detectSessionInUrl: true` —
-      //     supabase-js sometimes loses the race when the page hydrates
-      //     before the auto-exchange completes.
+      // 3a. R145 — single-call exchange. With detectSessionInUrl OFF
+      //     (lib/supabase.ts) the SDK never touches the URL, so we own the
+      //     exchange end-to-end and there's no race. If a session already
+      //     exists (e.g. React StrictMode re-ran the effect) skip the
+      //     exchange — the code is single-use and a second call would just
+      //     fail with "code already used" while the first call's session
+      //     is sitting right there.
       const code = search.get("code");
       const tokenHash = search.get("token_hash");
       const otpType = search.get("type");
       if (code) {
-        // IDEMPOTENT exchange. An auth code is single-use, but it can get
-        // hit twice: `detectSessionInUrl` may auto-exchange it, and React
-        // StrictMode re-runs this effect in dev. Without this guard the
-        // SECOND attempt fails with "code already used" and we'd show an
-        // error — even though the FIRST attempt already logged the user in.
-        // So: if a session already exists, skip; and if the exchange errors
-        // but a session DID land, treat it as success.
-        const { data: pre } = await supabase.auth.getSession();
-        if (!pre.session) {
+        const { data: existing } = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (!existing.session) {
           const { error: exchangeErr } =
             await supabase.auth.exchangeCodeForSession(code);
           if (cancelled) return;
           if (exchangeErr) {
-            const { data: post } = await supabase.auth.getSession();
-            if (!post.session) {
-              // R12 §1F — Supabase auth errors can include token fragments
-              // or "User from sub claim..." style internals. Show a static
-              // Hebrew message; full error stays in console for devs.
-              console.error("[auth/callback] exchangeCodeForSession", exchangeErr);
+            // A concurrent run (React StrictMode in dev re-runs effects)
+            // may have already consumed the code AND established a session.
+            // Re-check: if a session is now present, the exchange "error"
+            // is harmless and we keep going.
+            const { data: after } = await supabase.auth.getSession();
+            if (cancelled) return;
+            if (!after.session) {
+              // The most useful failure mode to diagnose: PKCE code-verifier
+              // was wiped from localStorage between signInWithOAuth() and
+              // this callback. Safari's Intelligent Tracking Prevention does
+              // exactly that when the auth round-trip crosses a different
+              // top-level domain (signInWithOAuth runs on moomentum.events,
+              // browser goes to google → supabase.co → back).
+              console.error(
+                "[auth/callback] exchangeCodeForSession",
+                exchangeErr,
+              );
               void logError({
                 type: "auth",
                 message: `exchangeCodeForSession: ${exchangeErr.message}`,
                 url: window.location.origin + "/auth/callback",
               });
-              setErrorMessage("לא הצלחנו לאמת את ההתחברות. נסה להתחבר שוב.");
+              const detail = (exchangeErr.message || "").toLowerCase();
+              const isVerifierIssue =
+                /verifier|pkce|invalid request|invalid grant/.test(detail);
+              setErrorMessage(
+                isVerifierIssue
+                  ? "ההתחברות נכשלה — נראה שהדפדפן (לרוב Safari פרטי) ניקה את אישור ההתחברות באמצע. נסה בחלון רגיל או בדפדפן אחר (Chrome / Firefox)."
+                  : "לא הצלחנו לאמת את ההתחברות. נסה להתחבר שוב.",
+              );
               setStatus("error");
               return;
             }
-            // A parallel run consumed the code but the session landed —
-            // fall through as success.
             console.warn(
               "[auth/callback] code already consumed but session present — continuing",
             );

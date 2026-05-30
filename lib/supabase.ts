@@ -29,13 +29,22 @@ export function getSupabase(): SupabaseClient | null {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      // R145 — DISABLED auto-detection. The /auth/callback page exchanges
+      // the code EXPLICITLY. Leaving detectSessionInUrl on caused a
+      // double-exchange race: supabase-js would start its own internal
+      // exchange when getSession() was first called, and our explicit
+      // exchangeCodeForSession() would then race against it — under Safari
+      // (and any browser where the internal exchange held its mutex longer
+      // than a few hundred ms) the second call deadlocked behind the
+      // unfinished first, and our 12s callback timeout fired with
+      // "האימות לוקח יותר מהרגיל". With auto-detect off, the callback owns
+      // the entire exchange end-to-end and there's no race.
+      detectSessionInUrl: false,
       // Force PKCE so OAuth (Google/Apple) + magic links always return a
-      // `?code=` we exchange on /auth/callback. The supabase-js default has
-      // drifted between "implicit" (#access_token in the hash) and "pkce"
-      // across versions; pinning it keeps the return shape consistent with
-      // the callback handler and avoids "logged in via Google but bounced
-      // back to the homepage" when the hash flow lands somewhere unhandled.
+      // `?code=` we exchange on /auth/callback. The supabase-js default
+      // has drifted between "implicit" (#access_token hash) and "pkce"
+      // across versions; pinning keeps the return shape consistent with
+      // the callback handler.
       flowType: "pkce",
     },
     realtime: { params: { eventsPerSecond: 2 } },
