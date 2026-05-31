@@ -1,82 +1,69 @@
 import {
   Users,
   MessageCircle,
+  Phone,
   Calculator,
   Sparkles,
-  Map,
   Layout,
   Activity,
-  CheckCircle2,
   PiggyBank,
   Store,
-  Award,
   type LucideIcon,
 } from "lucide-react";
 
 /**
- * R48 — the full feature catalog, presented with respect.
- * R97 (R76) — was 12 features; the "לוח שנה ו-Brain" card (and its
- * `Calendar` icon import) were removed because /calendar was deleted
- * in R74. Grid is now 11 features in a 3-up grid (1-up on mobile).
- * Server component, CSS-only hover. Icons in a gold token chip
- * (no hardcoded hex — color-mix off the --gold-100 token so it
- * tracks the theme).
+ * R151 — flagship feature grid. Rewritten for accuracy + brevity:
+ *   • Every card describes a feature that actually ships today.
+ *   • Adds the automated voice-call RSVP (NLPearl) which was missing.
+ *   • Removes the retired in-app chat copy + the QR check-in (it's a
+ *     one-tap check-in, no QR) + the inflated "+24 features" claim.
+ * Server component, CSS-only hover. Icons in a gold token chip.
  */
 const FEATURES: Array<{ icon: LucideIcon; title: string; body: string }> = [
   {
     icon: Users,
     title: "ניהול מוזמנים חכם",
-    body: "ייבוא אנשי קשר, קבוצות חכמות, פלוסים, אישורי הגעה אוטומטיים — הכל מתעדכן בזמן אמת",
+    body: "ייבוא אנשי קשר, קבוצות, פלוסים וסטטוס הגעה שמתעדכן בזמן אמת — רשימה אחת לכל המשפחה.",
   },
   {
     icon: MessageCircle,
-    title: "הזמנות WhatsApp",
-    body: "הזמנה מעוצבת עם תמונת תצוגה מקדימה ולינק לאישור הגעה — נשלח לכל אורח בלחיצה אחת",
+    title: "הזמנות ותזכורות ב-WhatsApp",
+    body: "הזמנה אישית עם לינק לאישור הגעה, ותזכורות אוטומטיות בעדינות למי שעדיין לא ענה.",
+  },
+  {
+    icon: Phone,
+    title: "שיחות אוטומטיות לאישור הגעה",
+    body: "מי שלא הגיב גם אחרי ההודעות מקבל שיחה קצרה ואדיבה — והתשובה (מגיעים? כמה?) מתעדכנת אצלכם לבד.",
+  },
+  {
+    icon: Layout,
+    title: "סידור הושבה + שליחת שולחנות",
+    body: "אלגוריתם שמשבץ לפי קבוצות וקונפליקטים, עם גרירה ידנית — ושליחת מספר השולחן לכל אורח ב-WhatsApp.",
   },
   {
     icon: Calculator,
-    title: "תקציב חי + 5 מחשבונים",
-    body: "כמה אורח באמת עולה · סימולטור ׳מה אם׳ · מעטפות · אלכוהול · AI להצעות מחיר",
+    title: "תקציב חי + מחשבונים",
+    body: "כל שקל מתועד מול מקדמות ויתרות, עם מחשבוני עלות-לאורח, מעטפות, אלכוהול וסימולטור ׳מה אם׳.",
   },
   {
     icon: Sparkles,
     title: "AI Co-Pilot",
-    body: "מתריע 14 יום לפני חריגת תקציב, מציע ספקים לפי הסטייל שלכם, מנתח אישורי הגעה",
-  },
-  {
-    icon: Map,
-    title: "ניווט וזיהוי לוקיישן",
-    body: "Waze · Google Maps · Apple Maps באוטומציה. האורחים מקבלים את האולם בלחיצה",
-  },
-  {
-    icon: Layout,
-    title: "סידור הושבה חכם",
-    body: "אלגוריתם שמשבץ אורחים לפי קבוצות, קונפליקטים, ו-VIPs. גרירה ידנית כשרוצים שינויים",
+    body: "מתריע מראש לפני חריגת תקציב, מציע ספקים לפי הסגנון שלכם, ועונה על שאלות תכנון בעברית.",
   },
   {
     icon: Activity,
-    title: "Momentum Live (ביום עצמו)",
-    body: "מנהל-משנה מקבל דשבורד חי: התראות AI, ניהול קריזה, שידור הודעות, וצ׳ק-אין אורחים בלחיצה",
-  },
-  {
-    icon: CheckCircle2,
-    title: "צ׳ק-אין מהיר",
-    body: "מנהל-משנה מסמן אורחים שהגיעו בלחיצה אחת — בלי הדפסה, בלי QR, בלי תקלות בכניסה",
-  },
-  {
-    icon: PiggyBank,
-    title: "מאזן רווח/הפסד",
-    body: "אחרי האירוע — מי שם מעטפה, כמה, ומי תצטרכו להחזיר לו באירוע שלו. כולל קלט קולי",
+    title: "יום האירוע — Momentum Live",
+    body: "מנהל-משנה מקבל דשבורד חי: צ׳ק-אין אורחים בלחיצה, שידור הודעות וטיפול בעדכונים. אתם רוקדים.",
   },
   {
     icon: Store,
-    title: "ספקים מאומתים",
-    body: "קטלוג ספקים עם ביקורות אמיתיות מזוגות שעבדו איתם. צ׳אט ישיר בתוך האפליקציה",
+    title: "ספקים מאומתים + ביקורות",
+    body: "קטלוג ספקים עם ביקורות אמיתיות מזוגות שעבדו איתם, ויצירת קשר ישירה בלחיצה.",
   },
   {
-    icon: Award,
-    title: "Wrapped Report",
-    body: "דוח אוטומטי בסגנון Spotify Wrapped — 8 שקפים שמספרים את סיפור האירוע שלכם",
+    icon: PiggyBank,
+    title: "מאזן מעטפות אחרי האירוע",
+    body: "מי נתן, כמה, ולמי תצטרכו להחזיר באירוע שלו — כולל הזנה קולית מהירה. בלי דפים מתעופפים.",
   },
 ];
 
@@ -89,15 +76,13 @@ export function FeatureGrid() {
             className="font-bold gradient-text"
             style={{ fontSize: "clamp(2rem, 6vw, 3rem)" }}
           >
-            כל מה שצריך לאירוע מושלם — במקום אחד
+            כל מה שצריך לאירוע — במערכת אחת
           </h2>
-          {/* R97 (R76) — count derives from the array so we never
-              get out of sync again if features come/go. */}
           <p
             className="mt-3 text-lg"
             style={{ color: "var(--foreground-soft)" }}
           >
-            {FEATURES.length} פיצ׳רים שמחליפים {FEATURES.length} כלים שונים
+            ממוזמנים ועד יום האירוע — בלי לקפוץ בין כלים.
           </p>
         </div>
 
@@ -139,8 +124,8 @@ export function FeatureGrid() {
           className="mt-12 text-center mx-auto max-w-2xl leading-relaxed text-sm"
           style={{ color: "var(--foreground-muted)" }}
         >
-          ועוד 24 פיצ׳רים נוספים — בריתות, בר/בת מצווה, ימי הולדת, אירועי
-          חברה. תפריט מלא לכל אירוע, מותאם בעברית.
+          ומתאים ל-9 סוגי אירועים — חתונה, חינה, בר/בת מצווה, שבת חתן,
+          אירוסין, ברית, יום הולדת ואירוע עסקי. הממשק והתכנים מתאימים את עצמם.
         </p>
       </div>
     </section>

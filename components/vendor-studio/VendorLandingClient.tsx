@@ -41,10 +41,17 @@ export function VendorLandingClient({ vendor }: { vendor: VendorLandingData }) {
     if (!supabase) return;
     let cancelled = false;
     (async () => {
+      // R150 — reviews are keyed by `vendor.id` everywhere: ReviewForm
+      // INSERTs with vendor.id, and VendorRatingSummary reads the
+      // vendor_review_stats view by vendor.id. This list read used to use
+      // `vendor.slug ?? vendor.id`, so for any vendor whose slug differs
+      // from their id the published reviews were written under the id but
+      // queried under the slug — they silently never appeared. Align to
+      // vendor.id so the list matches the write + the summary card.
       const { data } = (await supabase
         .from("vendor_reviews")
         .select("*")
-        .eq("vendor_id", vendor.slug ?? vendor.id)
+        .eq("vendor_id", vendor.id)
         .eq("is_published", true)
         .order("helpful_count", { ascending: false })
         .order("created_at", { ascending: false })

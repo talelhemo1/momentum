@@ -34,13 +34,11 @@ export function Hero() {
             color: "var(--foreground-muted)",
           }}
         >
-          ✨ Israeli Startup · נבנה בישראל
+          ✨ נבנה בישראל · בעברית מלאה
         </div>
 
-        {/* Launch banner — R121: while payments aren't wired yet,
-            every plan is open and free during the launch window.
-            Replaces the previous "₪99 launch price" anchor so the
-            same component conveys generosity instead of scarcity. */}
+        {/* Calm value chip — replaces the launch/pricing banner. No price,
+            no countdown, just the one-line promise. */}
         <div
           className="mt-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs sm:text-sm fade-up"
           style={{
@@ -50,10 +48,7 @@ export function Hero() {
             color: "var(--accent)",
           }}
         >
-          🎁 השקה רשמית — האתר חינמי לכולם לחודשיים{" "}
-          <span style={{ color: "var(--foreground-muted)" }}>
-            · ללא כרטיס אשראי
-          </span>
+          💍 כל האירוע — במערכת אחת
         </div>
 
         <h1
@@ -82,9 +77,10 @@ export function Hero() {
             animationDelay: "0.1s",
           }}
         >
-          בלי 300 הודעות בוואטסאפ. בלי 12 אקסלים. בלי בלאגן.
+          מוזמנים, אישורי הגעה ב-WhatsApp ובשיחה אוטומטית, תקציב חכם, סידור
+          הושבה ויום-האירוע עצמו.
           <br className="hidden sm:block" />
-          האפליקציה היחידה בארץ שמנהלת לכם את כל האירוע במקום אחד.
+          הכל מתנהל במקום אחד — בלי עשרות הודעות ובלי אקסלים.
         </p>
 
         <div
@@ -96,7 +92,7 @@ export function Hero() {
             className="btn-gold inline-flex items-center justify-center gap-2 w-full sm:w-auto"
             style={{ minHeight: 60, fontSize: "1.05rem", padding: "0 2rem" }}
           >
-            התחילו בחינם
+            התחילו עכשיו
             <ArrowLeft size={18} />
           </Link>
           <a
@@ -161,39 +157,15 @@ export function Hero() {
           </Link>
         </div>
 
-        {/* Social proof — number is hardcoded for now (dynamic later). */}
+        {/* R151 — honest trust line. No fabricated counts, no pricing
+            claims. Every item here is literally true of the product. */}
         <div
-          className="mt-6 inline-flex items-center gap-3 text-xs fade-up"
-          style={{ color: "var(--foreground-muted)", animationDelay: "0.18s" }}
-        >
-          <div className="flex -space-x-2" aria-hidden>
-            {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="w-7 h-7 rounded-full border-2"
-                style={{
-                  background:
-                    "linear-gradient(135deg, var(--gold-100), var(--gold-500))",
-                  borderColor: "var(--background)",
-                }}
-              />
-            ))}
-          </div>
-          <span>הצטרפו ל-27 זוגות שכבר בנו את האירוע שלהם</span>
-        </div>
-
-        <div
-          className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs sm:text-sm fade-up"
+          className="mt-9 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs sm:text-sm fade-up"
           style={{ color: "var(--foreground-muted)", animationDelay: "0.2s" }}
         >
-          {/* R96 / R121 — R96 honoured the two pricing models
-              (couples one-time, vendors monthly). R121 collapses
-              both into the launch promise — everything is free
-              right now, and the second line is the honest "no
-              auto-charge" guarantee. */}
-          <span>✓ חינמי בתקופת ההשקה · ללא כרטיס אשראי</span>
-          <span>✓ אין חיוב אוטומטי כשהמבצע נגמר</span>
-          <span>✓ מותאם לישראל · בעיצוב יוקרתי · תמיכה אנושית</span>
+          <span>✓ מותאם לישראל · בעברית מלאה</span>
+          <span>✓ נשמר אוטומטית בענן</span>
+          <span>✓ האורחים לא צריכים להוריד כלום</span>
         </div>
       </div>
     </section>

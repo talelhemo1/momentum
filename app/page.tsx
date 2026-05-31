@@ -3,12 +3,9 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { RedirectIfSignedIn } from "@/components/landing/RedirectIfSignedIn";
 import { Hero } from "@/components/landing/Hero";
-import { PainSection } from "@/components/landing/PainSection";
-import { SolutionSection } from "@/components/landing/SolutionSection";
 import { FeatureGrid } from "@/components/landing/FeatureGrid";
 import { AppShowcase } from "@/components/landing/AppShowcase";
 import { TrustSection } from "@/components/landing/TrustSection";
-import { HonestStats } from "@/components/landing/HonestStats";
 import { FAQ } from "@/components/landing/FAQ";
 import { FinalCTA } from "@/components/landing/FinalCTA";
 
@@ -106,7 +103,7 @@ const REDIRECT_SCRIPT = `
 /**
  * R42 — premium landing page. Composition only; each section is its own
  * component under components/landing/. Order is conversion-tuned:
- * hook → pain → solution → proof → trust → objections → close.
+ * hook → features → product showcase → trust → objections → close.
  */
 export default async function LandingPage() {
   const nonce = (await headers()).get("x-nonce") ?? "";
@@ -124,12 +121,9 @@ export default async function LandingPage() {
       <Header />
       <main className="flex-1 relative">
         <Hero />
-        <PainSection />
-        <SolutionSection />
         <FeatureGrid />
         <AppShowcase />
         <TrustSection />
-        <HonestStats />
         <FAQ />
         <FinalCTA />
       </main>

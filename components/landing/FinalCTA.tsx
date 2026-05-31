@@ -23,10 +23,9 @@ export function FinalCTA() {
             color: "var(--foreground-soft)",
           }}
         >
-          {/* R121 — the launch is free for everyone for 60 days.
-              Calm + confident copy: it's open, all of it, no card. */}
-          לרגל ההשקה, כל מי שמצטרף עכשיו מקבל את הפלטפורמה המלאה
-          בחינם לחודשיים. בלי מספרי כרטיס, בלי שדרוגים, בלי הפתעות.
+          {/* R151 — no pricing / launch-window copy. Calm benefit close. */}
+          מהרשימה הראשונה ועד הריקוד האחרון — הכל במקום אחד, בעברית.
+          צרו את האירוע שלכם והתחילו לתכנן בראש שקט.
         </p>
 
         <div className="mt-10 flex justify-center">
@@ -38,13 +37,13 @@ export function FinalCTA() {
             className="btn-gold inline-flex items-center justify-center gap-2"
             style={{ minHeight: 66, fontSize: "1.15rem", padding: "0 2.5rem" }}
           >
-            התחילו את המסע
+            התחילו עכשיו
             <ArrowLeft size={20} />
           </Link>
         </div>
 
         <p className="mt-5 text-sm" style={{ color: "var(--accent)" }}>
-          🎁 חינמי לכולם · 60 ימי השקה · בלי כרטיס אשראי
+          ✨ ההגדרה לוקחת פחות מדקה
         </p>
       </div>
     </section>
