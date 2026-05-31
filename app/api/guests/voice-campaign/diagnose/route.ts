@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
           signal: AbortSignal.timeout(12_000),
         },
       );
-      const text = (await res.text()).catch(() => "").slice(0, 400);
+      const text = (await res.text().catch(() => "")).slice(0, 400);
       nlpearlApiProbe = {
         httpStatus: res.status,
         ok: res.ok,
