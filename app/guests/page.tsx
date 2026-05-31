@@ -481,15 +481,22 @@ function GuestsPageInner() {
                   <span className="ltr-num">{stats.whatsappRsvpEligible}</span>)
                 </button>
               )}
-              {stats.voiceEligible > 0 && (
+              {/* R153 — always show the voice-campaign entry when there are
+                  guests with a phone, so the feature is discoverable. The
+                  GATE (only call guests who didn't answer after ≥2 messages)
+                  still lives inside the modal — it just no longer hides the
+                  whole button when nobody is currently eligible. */}
+              {state.guests.some((g) => g.phone) && (
                 <button
                   onClick={() => setShowVoice(true)}
                   className="btn-secondary inline-flex items-center gap-2"
-                  title="שיחות אוטומטיות רק למי שלא ענה אחרי 2 הודעות (NLPearl)"
+                  title="שיחות אוטומטיות לאישור הגעה — מתקשר רק למי שלא ענה אחרי 2 הודעות (NLPearl)"
                 >
                   <Phone size={18} />
-                  שיחות למי שלא ענה (
-                  <span className="ltr-num">{stats.voiceEligible}</span>)
+                  שיחות אוטומטיות
+                  {stats.voiceEligible > 0 && (
+                    <span className="ltr-num">({stats.voiceEligible})</span>
+                  )}
                 </button>
               )}
               {/* R94 — manual reminder to guests who already CONFIRMED.
