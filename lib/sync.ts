@@ -169,6 +169,15 @@ function beaconFlush(): void {
   } catch {
     return;
   }
+  // R152 — same eventless guard as pushToCloud: don't beacon an empty
+  // (pre-restore) state over a populated cloud row.
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !(payload as { event?: unknown }).event
+  ) {
+    return;
+  }
 
   const body = JSON.stringify({
     user_id: userId,
@@ -262,6 +271,14 @@ async function pushToCloud(): Promise<boolean> {
       payload = JSON.parse(raw);
     } catch {
       setStatus("error", "פגום: לא ניתן לפרסר את המצב המקומי לפני סנכרון");
+      return false;
+    }
+    // R152 — NEVER overwrite the cloud with an eventless state. On a fresh
+    // page load (or after Safari ITP wiped localStorage) the store briefly
+    // holds the empty default before syncOnLogin restores; a stray
+    // `momentum:update` could otherwise push that emptiness over a populated
+    // cloud row and erase everything. No event = nothing worth saving — skip.
+    if (!payload || !payload.event) {
       return false;
     }
     const { error } = await supabase

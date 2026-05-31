@@ -363,8 +363,9 @@ export const userActions = {
     // and then the purge removes the only remaining copy. The flush MUST run
     // while still authenticated (it calls auth.getUser()), so it goes before
     // auth.signOut(). Bounded by a race so a dead network can't hang logout.
+    let flushed = false;
     try {
-      await Promise.race([
+      flushed = await Promise.race([
         flushToCloud(),
         new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2500)),
       ]);
@@ -408,15 +409,29 @@ export const userActions = {
         // the prior user's vendor pill for ~1s until the server check
         // returns "no landing".
         ls.removeItem("momentum.vendor.context.v1");
-        // R19 — wipe the AppState too. Until this fix, signing out only
-        // cleared the auth identity; the event/guests/budget payload was
-        // still in localStorage, so the Header kept rendering the previous
-        // user's event card in the top-left until a manual refresh.
-        // Strings hard-coded for the same circular-import reason as above —
-        // keep in sync with STORAGE_KEYS.app / .slots / .activeSlotId.
-        ls.removeItem("momentum.app.v1");
-        ls.removeItem("momentum.app.slots");
-        ls.removeItem("momentum.app.activeSlotId");
+        // R152 — DATA-SAFETY GATE (the "everything deleted on every login"
+        // fix). The AppState payload is wiped ONLY when we CONFIRMED it
+        // reached the cloud this logout (flushed === true). Previously the
+        // purge was unconditional, so whenever the cloud push failed or
+        // timed out, logout destroyed the user's only copy and the next
+        // login restored an empty cloud row → all data gone. If the flush
+        // wasn't confirmed we KEEP the local copy; it survives to the next
+        // login on this browser, where syncOnLogin reconciles it (and pushes
+        // it up once the cloud write succeeds).
+        //
+        // R19 note: keeping the payload may briefly show the previous event
+        // card to a signed-out viewer on this device — a cosmetic regression
+        // that only happens when cloud sync is broken, and far preferable to
+        // silently deleting the user's whole event.
+        if (flushed) {
+          ls.removeItem("momentum.app.v1");
+          ls.removeItem("momentum.app.slots");
+          ls.removeItem("momentum.app.activeSlotId");
+        } else {
+          console.warn(
+            "[momentum/user] cloud flush NOT confirmed on logout — keeping local AppState so it isn't lost",
+          );
+        }
         ls.removeItem("momentum.terms_accepted_at");
         ls.removeItem("momentum.selectedTier");
         // Notify any live subscribers (Header, AssistantWidget, sync hooks)
