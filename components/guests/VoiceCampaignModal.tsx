@@ -156,6 +156,27 @@ export function VoiceCampaignModal({
                     </>
                   )}
                 </p>
+                {(last.failed ?? 0) > 0 &&
+                  last.results?.filter((r) => !r.ok).length > 0 && (
+                    <ul className="text-xs text-red-200/90 list-disc pr-4 space-y-1">
+                      {last.results
+                        .filter((r) => !r.ok)
+                        .slice(0, 5)
+                        .map((r) => (
+                          <li key={r.guestId}>
+                            {r.error === "nlpearl_401" || r.error === "nlpearl_403"
+                              ? "מפתח API שגוי ב-Vercel (NLPEARL_API_KEY)"
+                              : r.error === "nlpearl_404"
+                                ? "מזהה Pearl שגוי (NLPEARL_OUTBOUND_ID)"
+                                : r.error === "nlpearl_not_configured"
+                                  ? "NLPearl לא מוגדר בשרת"
+                                  : r.error === "nlpearl_network"
+                                    ? "שגיאת רשת ל-NLPearl"
+                                    : r.error ?? "שגיאה לא ידועה"}
+                          </li>
+                        ))}
+                    </ul>
+                  )}
                 <p className="text-white/55 text-xs">
                   עדכון RSVP אוטומטי יגיע אחרי סיום השיחות (webhook). תא קולי / לא
                   ענה — ללא ניסיון חוזר.
