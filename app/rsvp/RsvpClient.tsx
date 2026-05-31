@@ -168,15 +168,12 @@ function RsvpInner() {
     [venueText],
   );
 
-  // R119 — pre-fill the confirmation phone from `state.guests` when
-  // we can. That only matches if the host opens the RSVP link on
-  // their OWN device (testing the flow). On a real guest's phone
-  // the local store is empty and the guest types their phone in.
-  useEffect(() => {
-    if (!resolved?.guest?.id) return;
-    const localGuest = state.guests.find((g) => g.id === resolved.guest.id);
-    if (localGuest?.phone && !confirmPhone) setConfirmPhone(localGuest.phone);
-  }, [resolved?.guest?.id, state.guests, confirmPhone]);
+  // R119 — pre-fill when the host tests on their own device (guest in local store).
+  const hostPreviewPhone =
+    resolved?.guest?.id != null
+      ? (state.guests.find((g) => g.id === resolved.guest.id)?.phone ?? "")
+      : "";
+  const effectiveConfirmPhone = confirmPhone || hostPreviewPhone;
 
   // Track view on first render with a resolved payload — only once per page load.
   const trackedRef = useRef(false);
@@ -302,7 +299,7 @@ function RsvpInner() {
     // above via publishRsvpUpdate). Skipped for "maybe" — that's
     // a non-final answer, no logistics to confirm yet.
     if (finalStatus !== "maybe") {
-      const phone = confirmPhone.trim();
+      const phone = effectiveConfirmPhone.trim();
       const email = confirmEmail.trim();
       if (phone || email) {
         const hostNames = resolved.partnerName
@@ -453,7 +450,7 @@ function RsvpInner() {
             setCount={setCount}
             note={note}
             setNote={setNote}
-            confirmPhone={confirmPhone}
+            confirmPhone={effectiveConfirmPhone}
             setConfirmPhone={setConfirmPhone}
             confirmEmail={confirmEmail}
             setConfirmEmail={setConfirmEmail}

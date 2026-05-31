@@ -100,10 +100,7 @@ function DashboardInner() {
     if (eventGuardDone) return;
     if (!userHydrated || !user) return;
     if (!hydrated) return;
-    if (state.event) {
-      setEventGuardDone(true);
-      return;
-    }
+    if (state.event) return;
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       if (cancelled) return;
