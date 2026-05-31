@@ -163,6 +163,13 @@ export const VENDOR_TIPS: Record<VendorType, VendorTip[]> = {
   hosting: ENTERTAINMENT_TIPS,
   kids: ENTERTAINMENT_TIPS,
   security: GENERIC_TIPS,
+  // Henna / Mizrahi & richer celebration categories (2026)
+  bouzouki: MUSIC_TIPS,
+  trumpet: MUSIC_TIPS,
+  "dessert-station": CATERING_TIPS,
+  "henna-cookies": CATERING_TIPS,
+  costumes: DRESS_TIPS,
+  producer: GENERIC_TIPS,
 };
 
 /** Resolver — VendorType-typed key (compile-time safe). Falls back to the

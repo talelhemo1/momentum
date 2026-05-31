@@ -112,7 +112,7 @@ export const EVENT_CONFIG: Record<EventType, EventTypeConfig> = {
   wedding: {
     label: "חתונה",
     tagline: "מהתכנון הראשון ועד הריקוד האחרון.",
-    recommendedVendors: ["venue", "photography", "dj", "band", "florist", "social", "alcohol", "catering", "makeup", "dress", "rabbi", "drone", "stationery", "lighting", "cocktail", "photobooth", "hosting", "security"],
+    recommendedVendors: ["venue", "photography", "dj", "band", "bouzouki", "trumpet", "florist", "social", "alcohol", "catering", "makeup", "dress", "rabbi", "drone", "stationery", "lighting", "cocktail", "photobooth", "hosting", "security", "dessert-station", "producer"],
     subject: {
       hasPartner: true,
       hostLabel: "שם החתן",
@@ -144,7 +144,7 @@ export const EVENT_CONFIG: Record<EventType, EventTypeConfig> = {
   "bar-mitzvah": {
     label: "בר מצווה",
     tagline: "מהעלייה לתורה ועד הריקוד עם החברים.",
-    recommendedVendors: ["venue", "photography", "social", "dj", "alcohol", "catering", "florist", "rabbi", "kids", "magician", "photobooth", "hosting", "lighting"],
+    recommendedVendors: ["venue", "photography", "social", "dj", "alcohol", "catering", "florist", "rabbi", "kids", "magician", "photobooth", "hosting", "lighting", "dessert-station"],
     subject: {
       hasPartner: false,
       hostLabel: "שם החתן בר המצווה",
@@ -175,7 +175,7 @@ export const EVENT_CONFIG: Record<EventType, EventTypeConfig> = {
   "bat-mitzvah": {
     label: "בת מצווה",
     tagline: "מסיבת הבגרות שלה — מושלמת.",
-    recommendedVendors: ["venue", "photography", "social", "dj", "florist", "designer", "catering", "makeup", "kids", "magician", "photobooth", "hosting", "stationery"],
+    recommendedVendors: ["venue", "photography", "social", "dj", "florist", "designer", "catering", "makeup", "kids", "magician", "photobooth", "hosting", "stationery", "dessert-station"],
     subject: {
       hasPartner: false,
       hostLabel: "שם הכלה בת המצווה",
@@ -293,7 +293,7 @@ export const EVENT_CONFIG: Record<EventType, EventTypeConfig> = {
   birthday: {
     label: "יום הולדת",
     tagline: "אירוע אישי ובלתי נשכח.",
-    recommendedVendors: ["venue", "dj", "social", "alcohol", "photography", "catering", "cocktail", "photobooth", "magician", "kids", "lighting"],
+    recommendedVendors: ["venue", "dj", "social", "alcohol", "photography", "catering", "cocktail", "photobooth", "magician", "kids", "lighting", "dessert-station"],
     subject: {
       hasPartner: false,
       hostLabel: "שם החוגג",
@@ -314,7 +314,7 @@ export const EVENT_CONFIG: Record<EventType, EventTypeConfig> = {
   corporate: {
     label: "אירוע עסקי",
     tagline: "אירוע מותג ברמה הגבוהה ביותר.",
-    recommendedVendors: ["venue", "catering", "photography", "videography", "social", "dj", "alcohol", "lighting", "signage", "stationery", "hosting", "security"],
+    recommendedVendors: ["venue", "catering", "photography", "videography", "social", "dj", "alcohol", "lighting", "signage", "stationery", "hosting", "security", "producer"],
     subject: {
       hasPartner: false,
       hostLabel: "שם החברה / הארגון",
@@ -332,20 +332,23 @@ export const EVENT_CONFIG: Record<EventType, EventTypeConfig> = {
     ],
   },
 
-  other: {
-    label: "אירוע",
-    tagline: "אירוע מותאם אישית.",
-    recommendedVendors: ["venue", "photography", "dj", "catering", "social"],
+  henna: {
+    label: "חינה",
+    tagline: "חגיגה צבעונית ומסורתית לפני החתונה.",
+    recommendedVendors: ["venue", "catering", "dj", "bouzouki", "trumpet", "photography", "florist", "social", "makeup", "dress", "costumes", "dessert-station", "henna-cookies", "producer"],
     subject: {
-      hasPartner: false,
-      hostLabel: "שם המארח",
-      hostPlaceholder: "השם המלא שלך",
-      step1Title: "ספרו לנו על האירוע",
-      step1Subtitle: "כמה פרטים בסיסיים.",
+      hasPartner: true,
+      hostLabel: "שם החתן",
+      hostPlaceholder: "החתן",
+      partnerLabel: "שם הכלה",
+      partnerPlaceholder: "הכלה",
+      step1Title: "ספרו לנו על הזוג",
+      step1Subtitle: "השמות יופיעו על הזמנות וברכות לחינה.",
     },
-    avgPerGuest: 350,
-    invitationHostPhrase: (host) => host,
-    invitationEventPhrase: "לאירוע",
+    avgPerGuest: 300,
+    invitationHostPhrase: (host, partner) =>
+      partner ? `${host} ו${partner}` : host,
+    invitationEventPhrase: "לחינה שלהם",
     journey: [
       STEP_DEFINE,
       STEP_VENDORS_GENERIC,

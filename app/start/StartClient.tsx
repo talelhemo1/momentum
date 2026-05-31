@@ -4,32 +4,19 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { PricingTiers } from "@/components/PricingTiers";
-import type { CoupleTier } from "@/lib/pricing";
-import { STORAGE_KEYS } from "@/lib/storage-keys";
 import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { applyCloudPayload, readEventId } from "@/lib/store";
 import type { AppState } from "@/lib/types";
 
-// R12 §3S — centralized; dot separator (was `:`).
-const SELECTED_TIER_KEY = STORAGE_KEYS.selectedTier;
-
 /**
- * Pricing gate UI. Owns the selectedTier state, persists it to sessionStorage
- * when the user proceeds, then forwards to /onboarding?gate=ok.
- *
- * R6 #3 + #6 fixes:
- *   - Tier cards are now selectable (radio-like) instead of 3 identical
- *     "המשך" links that all pointed to the same URL.
- *   - The selected tier is saved to sessionStorage so onboarding can use it.
- *   - Footer is rendered for parity with /pricing (was missing).
+ * Pre-onboarding gate. Paid tiers are removed for now (product hasn't
+ * decided on pricing yet), so there's nothing to choose — this page just
+ * (a) acts as a cloud backstop that forwards returning users straight to
+ * their saved event, and (b) sends new users on to /onboarding.
  */
 export function StartClient() {
   const router = useRouter();
-  // Default to free — the safest fallback if the user proceeds without
-  // explicitly tapping a card.
-  const [selectedTier, setSelectedTier] = useState<CoupleTier>("free");
   // R140 — cloud backstop. The page-level inline script only checks
   // localStorage at paint time; a returning user whose `app_states` row
   // exists in the cloud but localStorage is empty would land here even
@@ -80,15 +67,6 @@ export function StartClient() {
   }, [router]);
 
   const handleContinue = () => {
-    if (typeof window !== "undefined") {
-      try {
-        window.sessionStorage.setItem(SELECTED_TIER_KEY, selectedTier);
-      } catch {
-        // sessionStorage can be disabled (Safari private mode quotas etc.).
-        // Selection is non-critical for the flow itself, so a silent failure
-        // here is acceptable — the user still proceeds.
-      }
-    }
     router.push("/onboarding?gate=ok");
   };
 
@@ -125,23 +103,10 @@ export function StartClient() {
             <h1 className="mt-5 text-4xl md:text-6xl font-extrabold tracking-tight leading-[1.05]">
               <span className="gradient-gold block">חינמי לכולם — לכבוד ההשקה</span>
             </h1>
-            {/* R121 — was a "choose your tier" page that anchored on
-                ₪99 launch price. While paid tiers are paused for the
-                launch window, the copy reframes as "you already
-                have everything". The PricingTiers component below
-                continues to show feature breakdowns for context. */}
             <p className="mt-5 text-base md:text-lg leading-relaxed" style={{ color: "var(--foreground-soft)" }}>
               <strong className="text-[--foreground]">אין מה לבחור עכשיו.</strong>{" "}
-              כל הפיצ׳רים פתוחים בחינם לחודשיים — בלי כרטיס אשראי, בלי חיוב אוטומטי, בלי הגבלות.
+              כל הפיצ׳רים פתוחים בחינם — בלי כרטיס אשראי, בלי חיוב אוטומטי, בלי הגבלות.
             </p>
-          </div>
-
-          <div className="mt-12">
-            <PricingTiers
-              selectedTier={selectedTier}
-              onSelect={setSelectedTier}
-              ctaLabel="בחר"
-            />
           </div>
 
           <div className="mt-12 flex flex-col items-center gap-3">
@@ -153,9 +118,6 @@ export function StartClient() {
               המשך לתכנון האירוע
               <ArrowLeft size={16} />
             </button>
-            <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
-              תמיד אפשר לשדרג מאוחר יותר דרך תפריט המשתמש.
-            </p>
           </div>
         </div>
       </main>

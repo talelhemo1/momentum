@@ -23,6 +23,7 @@ import {
   Check,
   Trophy,
   Globe,
+  ArrowLeft,
 } from "lucide-react";
 import { actions } from "@/lib/store";
 import { vendorImageFor } from "@/lib/images";
@@ -201,50 +202,46 @@ function VendorCardImpl({
       animate={{ opacity: 1, y: 0 }}
       exit={reducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
       transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
-      className={`card overflow-hidden flex flex-col card-hover ${selected ? "card-selected" : ""}`}
+      className={`vendor-tile card overflow-hidden flex flex-col ${selected ? "card-selected" : ""}`}
       role="button"
       tabIndex={0}
       aria-label={`פתח תצוגה מהירה של ${vendor.name}`}
       onClick={handleCardClick}
       onKeyDown={handleCardKey}
     >
-      <div className={`aspect-[16/10] relative ${meshClass} overflow-hidden`}>
-        {/* R96 — two render branches with `object-cover` everywhere
-            for a uniform photo-like look across every tile:
-              1. Vendor uploaded something (cover / logo / hero) →
-                 fill the 16:10 frame edge-to-edge. Logos that are
-                 square get cropped slightly top/bottom — almost
-                 always invisible since most logos have transparent
-                 backgrounds. Trade-off worth it for grid symmetry.
-              2. No upload at all → richer VendorImagePlaceholder
-                 (gradient + monogram + soft photo-like blobs).
-            The R84 dual blur-backdrop + contained-foreground combo
-            was visually correct for logo uploads but made every
-            tile look slightly different in weight; switching to a
-            single object-cover gives the catalog the consistent
-            "every vendor has a photo" feel the user asked for. */}
-        {usesVendorPhoto ? (
-          <Image
-            src={imageUrl}
-            alt={vendor.name}
-            fill
-            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            quality={70}
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out hover:scale-105"
-          />
-        ) : (
-          <VendorImagePlaceholder
-            name={vendor.name}
-            category={vendor.type}
-          />
-        )}
+      {/* ── Artwork ──────────────────────────────────────────────────
+          R149 — editorial hero. The vendor's photo/logo fills a 4:3
+          frame; the name + category are set ON the image over a
+          cinematic gradient (magazine-style) so the catalog reads as a
+          curated directory. `.vendor-tile__zoom` does a slow scale on
+          hover (covers both the <Image> and the placeholder uniformly). */}
+      <div className={`relative aspect-[4/3] overflow-hidden ${meshClass}`}>
+        <div className="vendor-tile__zoom absolute inset-0">
+          {usesVendorPhoto ? (
+            <Image
+              src={imageUrl}
+              alt={vendor.name}
+              fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              quality={72}
+              className="object-cover"
+            />
+          ) : (
+            <VendorImagePlaceholder name={vendor.name} category={vendor.type} />
+          )}
+        </div>
         {/* Keep the legacy reference so `imageUrl` doesn't become a
             dead import — used by future template variants that may
             want the stock fallback again. */}
         {false && <span data-stock-url={imageUrl} />}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
 
-        <div className="absolute top-3 start-3 flex items-center gap-2">
+        {/* Cinematic legibility gradients: deep wash at the bottom for
+            the title, a soft scrim at the top for the badges. */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/35 to-transparent pointer-events-none" />
+        <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/45 to-transparent pointer-events-none" />
+
+        {/* Top-left — catalog trust badge */}
+        <div className="absolute top-3 start-3 flex items-center gap-2 z-[3]">
           {vendor.inCatalog && (
             <span className="pill pill-gold">
               <ShieldCheck size={11} /> בקטלוג
@@ -252,7 +249,8 @@ function VendorCardImpl({
           )}
         </div>
 
-        <div className="absolute top-3 end-3 flex items-center gap-1.5" data-no-quicklook>
+        {/* Top-right — compare + save */}
+        <div className="absolute top-3 end-3 flex items-center gap-1.5 z-[3]" data-no-quicklook>
           <motion.button
             type="button"
             onClick={handleCompare}
@@ -260,8 +258,8 @@ function VendorCardImpl({
             whileTap={reducedMotion ? undefined : { scale: 0.92 }}
             className={`relative w-9 h-9 rounded-full backdrop-blur-md border flex items-center justify-center transition disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-1 focus-visible:ring-offset-black ${
               inCompare
-                ? "bg-[--accent] border-[--accent] text-black"
-                : "bg-black/40 border-white/15 text-white/85 hover:bg-black/60"
+                ? "bg-[--accent] border-[--accent] text-black shadow-[0_6px_18px_-6px_var(--accent-glow)]"
+                : "bg-black/35 border-white/20 text-white/90 hover:bg-black/55 hover:border-white/35"
             }`}
             aria-label={inCompare ? `הסר את ${vendor.name} מההשוואה` : `הוסף את ${vendor.name} להשוואה`}
             aria-pressed={inCompare}
@@ -287,8 +285,8 @@ function VendorCardImpl({
             transition={{ type: "spring", stiffness: 600, damping: 14 }}
             className={`relative w-9 h-9 rounded-full backdrop-blur-md border flex items-center justify-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-1 focus-visible:ring-offset-black ${
               selected
-                ? "bg-[--accent] border-[--accent] text-black"
-                : "bg-black/40 border-white/15 text-white/85 hover:bg-black/60"
+                ? "bg-[--accent] border-[--accent] text-black shadow-[0_6px_18px_-6px_var(--accent-glow)]"
+                : "bg-black/35 border-white/20 text-white/90 hover:bg-black/55 hover:border-white/35"
             } ${selected ? "heart-pulse" : ""}`}
             aria-label={selected ? `הסר את ${vendor.name} מהרשימה שלך` : `הוסף את ${vendor.name} לרשימה שלך`}
             aria-pressed={selected}
@@ -303,70 +301,83 @@ function VendorCardImpl({
           </motion.button>
         </div>
 
-        {/* R37 — no fabricated rating for a brand-new catalog vendor.
-            Zero reviews → an honest "new vendor" badge instead of a
-            number nobody actually gave. */}
-        <div className="absolute bottom-3 start-3 inline-flex items-center gap-1 text-xs bg-black/50 backdrop-blur-md rounded-full px-2.5 py-1 border border-white/10">
-          {vendor.reviews > 0 ? (
-            <>
-              <Star size={11} className="text-[--accent]" fill="currentColor" />
-              <span className="font-bold ltr-num">{vendor.rating}</span>
-              <span className="text-white/50 ltr-num">({vendor.reviews})</span>
-            </>
-          ) : (
-            // R36+R37 — no ⭐ / fabricated count for a brand-new vendor.
-            <span className="font-semibold">✨ חדש בקטלוג</span>
-          )}
-        </div>
+        {/* Bottom overlay — vendor name + category (left) and the rating
+            chip (right). The name lives on the artwork now (R149) for a
+            high-end directory feel; the body below leads with the pitch. */}
+        <div className="absolute inset-x-0 bottom-0 p-4 flex items-end justify-between gap-3 z-[3]">
+          <div className="min-w-0">
+            <h3
+              className="font-bold text-lg leading-tight line-clamp-1 text-white"
+              style={{ textShadow: "0 1px 10px rgba(0,0,0,0.65)" }}
+            >
+              {vendor.name}
+            </h3>
+            <div
+              className="text-xs mt-1 line-clamp-1 text-white/75"
+              style={{ textShadow: "0 1px 8px rgba(0,0,0,0.6)" }}
+            >
+              {VENDOR_TYPE_LABELS[vendor.type]} · {REGION_LABELS[vendor.region]}
+            </div>
+          </div>
 
-        {/* R147 — VendorAvatar (small gold circle over the bottom-right
-            corner) removed. The vendor's logo is now the FULL tile
-            image, so a separate avatar was redundant and made the
-            tile feel cluttered ("עיגול הקטן שנמצא בפנים איפה
-            שהלוגו"). If the vendor never uploaded a logo, the stock
-            mesh image is shown alone — same calm composition. */}
+          {/* R37 — honest rating: a real number+count, or a "new" badge
+              for a zero-review vendor (never a fabricated score). */}
+          <div className="shrink-0 inline-flex items-center gap-1 text-xs bg-black/45 backdrop-blur-md rounded-full px-2.5 py-1 border border-white/15">
+            {vendor.reviews > 0 ? (
+              <>
+                <Star size={11} className="text-[--accent]" fill="currentColor" />
+                <span className="font-bold ltr-num">{vendor.rating}</span>
+                <span className="text-white/55 ltr-num">({vendor.reviews})</span>
+              </>
+            ) : (
+              <span className="font-semibold whitespace-nowrap">✨ חדש</span>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* R84-1 — fixed card body height so every tile in the grid is
-          the same size regardless of name length / description length.
-          The grid container above sets `gridAutoRows: 1fr` so every
-          row gets the tallest item's height; `min-h` here guarantees
-          a sensible floor even on rows with all-short cards. */}
-      <div className="p-5 flex flex-col flex-1" style={{ minHeight: 170 }}>
-        <h3 className="font-semibold text-lg leading-tight line-clamp-1">{vendor.name}</h3>
-        <div className="text-xs text-white/50 mt-1 line-clamp-1">
-          {VENDOR_TYPE_LABELS[vendor.type]} · {REGION_LABELS[vendor.region]}
-        </div>
+      {/* ── Body ─────────────────────────────────────────────────────
+          R84-1 — fixed floor on body height so every tile in a row is
+          the same size regardless of description / tag length. */}
+      <div className="p-5 flex flex-col flex-1" style={{ minHeight: 148 }}>
+        <p className="text-sm text-white/65 leading-relaxed line-clamp-2">
+          {vendor.description}
+        </p>
 
-        <p className="text-sm text-white/65 mt-3 leading-relaxed line-clamp-2">{vendor.description}</p>
-
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {vendor.tags.slice(0, 3).map((tag) => (
-            <span
-              key={tag}
-              className="text-[11px] rounded-full border border-white/[0.08] bg-white/[0.02] px-2 py-0.5 text-white/55"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
+        {vendor.tags.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {vendor.tags.slice(0, 3).map((tag) => (
+              <span
+                key={tag}
+                className="text-[11px] rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-0.5 text-white/60"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
 
         <SocialRow vendor={vendor} />
 
-        {/* R67 (R84) — price block removed per "no prices anywhere"
-            policy. The Vendor type still carries priceFrom for future
-            re-introduction (filter chips, sort order); the catalog UI
-            simply no longer surfaces a shekel value. */}
-        {/* R90 — in-app chat retired. Couples reach vendors through
-            WhatsApp / phone only now (on the public landing page).
-            Catalog card only carries the phone tap; the "💬 צ׳אט"
-            button + onChat handler were removed. */}
-        <div className="mt-auto pt-5 flex items-center justify-end" data-no-quicklook>
+        {/* R67 (R84) — no price. R90 — no in-app chat. The footer pairs a
+            hover-revealed "view profile" hint (left) with the phone tap
+            (right). The whole card is already clickable; the hint just
+            makes the affordance obvious and inviting. */}
+        <div className="mt-auto pt-5 flex items-center justify-between gap-2">
+          <span
+            className="vendor-tile__reveal text-xs font-semibold inline-flex items-center gap-1"
+            style={{ color: "var(--accent)" }}
+            aria-hidden
+          >
+            צפה בפרופיל
+            <ArrowLeft size={13} />
+          </span>
           {vendor.phone && (
             <a
               href={`tel:${vendor.phone}`}
               onClick={(e) => e.stopPropagation()}
-              className="rounded-full bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.1] p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent]"
+              data-no-quicklook
+              className="rounded-full bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.1] hover:border-[var(--border-gold)] p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent]"
               aria-label={`התקשר ל${vendor.name}`}
             >
               <Phone size={14} />

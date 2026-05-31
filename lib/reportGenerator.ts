@@ -32,7 +32,7 @@ const TYPICAL_HOURS: Partial<Record<EventType, number>> = {
   engagement: 4,
   birthday: 4,
   corporate: 4,
-  other: 4,
+  henna: 4,
 };
 
 export function generateReport(state: AppState): EventReport {

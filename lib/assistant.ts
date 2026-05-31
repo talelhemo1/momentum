@@ -50,9 +50,9 @@ export interface AssistantResponse {
   error?: string;
 }
 
-// R12 — aligned with the public /pricing page promise. Free users get 5 turns
-// per calendar day; premium gets 100. Both numbers must match the pricing
-// table copy (app/pricing/page.tsx) exactly so the user gets what we sell.
+// AI assistant daily turn caps (cost control). Paid tiers are removed for
+// now, so in practice everyone is on the free quota until/unless a
+// `profiles.subscription_tier = "premium"` row exists.
 export const FREE_DAILY_QUOTA = 5;
 export const PREMIUM_DAILY_QUOTA = 100;
 
@@ -200,7 +200,7 @@ ${vendorsLine}
  */
 export function buildSuggestedQuestions(ctx: AssistantContext): string[] {
   if (!ctx.event) {
-    return ["איך מתחילים?", "מה המסלולים?", "אני ספק — איך מצטרפים?"];
+    return ["איך מתחילים?", "מה האפליקציה עושה?", "אני ספק — איך מצטרפים?"];
   }
 
   const suggestions: string[] = [];

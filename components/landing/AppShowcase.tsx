@@ -56,9 +56,9 @@ export function AppShowcase() {
           <Callout>ספירה לאחור חיה</Callout>
           <Callout>תקציב שמתעדכן לבד</Callout>
           <Callout>AI שמתריע על חריגה</Callout>
-          <Callout>אישורי הגעה בזמן אמת</Callout>
-          <Callout>צ׳ק-אין QR בכניסה</Callout>
-          <Callout>ניהול קריזה ביום עצמו</Callout>
+          <Callout>אישורי הגעה ב-WhatsApp ובשיחה</Callout>
+          <Callout>שליחת מספרי שולחן לאורחים</Callout>
+          <Callout>צ׳ק-אין אורחים בלחיצה</Callout>
         </div>
       </div>
     </section>
@@ -304,7 +304,7 @@ function LiveScreen() {
           color: "var(--gold-button-text)",
         }}
       >
-        📷 סרוק QR לצ׳ק-אין
+        ✓ צ׳ק-אין אורחים בלחיצה
       </div>
     </div>
   );

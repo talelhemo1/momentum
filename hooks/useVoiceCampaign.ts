@@ -3,13 +3,8 @@
 import { useCallback, useState } from "react";
 import type { EventInfo, Guest } from "@/lib/types";
 import { getSupabase } from "@/lib/supabase";
-import {
-  isGuestEligibleForVoiceCall,
-  type VoiceCampaignScope,
-} from "@/lib/voiceRsvpFromCall";
+import { isGuestEligibleForVoiceCampaign } from "@/lib/voiceRsvpFromCall";
 import { normalizeIsraeliPhone } from "@/lib/phone";
-
-export type { VoiceCampaignScope };
 
 export interface VoiceCampaignResult {
   guestId: string;
@@ -60,7 +55,6 @@ export function useVoiceCampaign() {
     async (
       event: EventInfo,
       guests: Guest[],
-      scope: VoiceCampaignScope = "not_confirmed",
     ): Promise<VoiceCampaignResponse | null> => {
       setBusy(true);
       setError(null);
@@ -89,18 +83,22 @@ export function useVoiceCampaign() {
           headers,
           body: JSON.stringify({
             eventId: event.id,
-            scope,
             event: {
               hostName: event.hostName ?? "",
               partnerName: event.partnerName,
               date: event.date,
               type: event.type,
             },
+            // Include outreach timestamps so the SERVER can re-enforce the
+            // "ignored ≥2 messages" gate (the client filter can be bypassed).
             guests: guests.map((g) => ({
               id: g.id,
               name: g.name,
               phone: g.phone,
               status: g.status,
+              invitedAt: g.invitedAt ?? null,
+              reminderSentAt: g.reminderSentAt ?? null,
+              whatsappRsvpSentAt: g.whatsappRsvpSentAt ?? null,
             })),
           }),
         });
@@ -137,14 +135,13 @@ export function useVoiceCampaign() {
   return { busy, last, error, start };
 }
 
-export function countVoiceEligible(
-  guests: Guest[],
-  scope: VoiceCampaignScope,
-): number {
+/** How many guests may currently be auto-called: valid phone + no answer yet
+ *  + already sent at least VOICE_MIN_MESSAGES messages. No "call everyone"
+ *  option — voice is a paid last resort, not a broadcast. */
+export function countVoiceEligible(guests: Guest[]): number {
   return guests.filter((g) => {
     const { valid } = normalizeIsraeliPhone(g.phone);
     if (!valid) return false;
-    if (scope === "all_with_phone") return true;
-    return isGuestEligibleForVoiceCall(g.status);
+    return isGuestEligibleForVoiceCampaign(g);
   }).length;
 }

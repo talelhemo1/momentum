@@ -14,7 +14,6 @@ import {
   Sparkles,
   CheckCircle2,
   Copy,
-  CreditCard,
   TrendingUp,
   User,
   Image as ImageIcon,
@@ -130,7 +129,6 @@ export default function VendorDashboardPage() {
     isVendor,
     vendorLanding,
     application,
-    hasPaidTier,
     isLoading: ctxLoading,
   } = useVendorContext();
 
@@ -494,7 +492,6 @@ export default function VendorDashboardPage() {
   // hero pulling the vendor's name + category + city + status, plus
   // the most actionable CTAs (view public page, edit landing).
   const categoryLabelStr = categoryLabel(vendorLanding.category ?? undefined);
-  const tierLabel = hasPaidTier ? "מסלול פרימיום" : "מסלול חינמי";
 
   return (
     <>
@@ -572,22 +569,6 @@ export default function VendorDashboardPage() {
                     {vendorLanding.city}
                   </span>
                 )}
-                <span
-                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full"
-                  style={{
-                    background: hasPaidTier
-                      ? "linear-gradient(135deg, rgba(244,222,169,0.20), rgba(168,136,74,0.10))"
-                      : "rgba(255,255,255,0.04)",
-                    border: hasPaidTier
-                      ? "1px solid var(--border-gold)"
-                      : "1px solid var(--border)",
-                    color: hasPaidTier
-                      ? "var(--accent)"
-                      : "var(--foreground-muted)",
-                  }}
-                >
-                  {tierLabel}
-                </span>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -809,16 +790,6 @@ export default function VendorDashboardPage() {
             icon={<Star size={22} aria-hidden />}
             label="ביקורות"
             sub="דירוגים מאומתים מזוגות"
-          />
-          {/* R140 — paid tiers paused during launch. Tile reframed
-              as a "you're in the launch window" reassurance. */}
-          <QuickAction
-            href="/#pricing"
-            externalTab
-            icon={<CreditCard size={22} aria-hidden />}
-            label="חינמי בתקופת השקה"
-            sub="כל הפיצ׳רים פתוחים — חודשיים"
-            highlight
           />
         </section>
 

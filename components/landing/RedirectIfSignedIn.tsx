@@ -35,6 +35,25 @@ export function RedirectIfSignedIn() {
 
   useEffect(() => {
     let cancelled = false;
+
+    // Backstop to the pre-paint inline script in app/page.tsx: if an OAuth /
+    // email-verify redirect dropped its credentials on the landing root (the
+    // Supabase Site-URL fallback) and the inline forward didn't fire for any
+    // reason, hand the params to the real handler. Same origin, so the PKCE
+    // code-verifier is intact. Full-page replace preserves the URL hash
+    // (implicit-flow tokens live there).
+    if (typeof window !== "undefined") {
+      const s = window.location.search || "";
+      const h = window.location.hash || "";
+      if (
+        /[?&](code|token_hash|error_description)=/.test(s) ||
+        /[#&](access_token|error_description)=/.test(h)
+      ) {
+        window.location.replace("/auth/callback" + s + h);
+        return;
+      }
+    }
+
     void (async () => {
       const supabase = getSupabase();
       if (!supabase) return;

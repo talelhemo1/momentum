@@ -10,7 +10,7 @@ const TYPICAL_GIFT_PER_GUEST: Record<EventType, number> = {
   engagement: 250,
   birthday: 200,
   corporate: 0,
-  other: 250,
+  henna: 250,
 };
 
 export interface EnvelopeRecommendation {

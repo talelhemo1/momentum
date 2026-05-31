@@ -164,10 +164,11 @@ const DEFAULTS: Record<EventType, DefaultTask[]> = {
     { title: "האירוע", phase: "day-of" },
   ],
 
-  other: [
+  henna: [
     { title: "קביעת תקציב", phase: "early" },
     { title: "בחירת מקום", phase: "early" },
     { title: "סגירת ספקים מרכזיים", phase: "mid" },
+    { title: "תלבושות ואביזרי חינה", phase: "mid" },
     { title: "הזמנות לאורחים", phase: "mid" },
     { title: "סידור עיצובי וטכני", phase: "late" },
     { title: "אישור פרטים אחרון", phase: "final" },

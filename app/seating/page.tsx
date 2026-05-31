@@ -491,6 +491,16 @@ export default function SeatingPage() {
                   שלח מקומות ({seatedConfirmedCount})
                 </motion.button>
               )}
+              {state.tables.length > 0 && (
+                <Link
+                  href="/dashboard/seating-send"
+                  className="btn-secondary text-sm py-2 px-4 inline-flex items-center gap-2"
+                  title="אשף שליחה מאובטח: נעילה, אישור פר שולחן, מעקב חי ושליחה ללא כפילויות"
+                >
+                  <CheckCircle2 size={14} />
+                  שליחה מאובטחת (אשף)
+                </Link>
+              )}
               {totals.assigned > 0 && (
                 <motion.button
                   whileHover={{ scale: 1.02 }}

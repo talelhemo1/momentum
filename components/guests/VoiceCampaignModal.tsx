@@ -1,13 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { X, Phone, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import type { EventInfo, Guest } from "@/lib/types";
-import {
-  countVoiceEligible,
-  useVoiceCampaign,
-  type VoiceCampaignScope,
-} from "@/hooks/useVoiceCampaign";
+import { countVoiceEligible, useVoiceCampaign } from "@/hooks/useVoiceCampaign";
 
 export function VoiceCampaignModal({
   open,
@@ -20,13 +16,9 @@ export function VoiceCampaignModal({
   guests: Guest[];
   event: EventInfo;
 }) {
-  const [scope, setScope] = useState<VoiceCampaignScope>("not_confirmed");
   const { busy, last, error, start } = useVoiceCampaign();
 
-  const eligible = useMemo(
-    () => countVoiceEligible(guests, scope),
-    [guests, scope],
-  );
+  const eligible = useMemo(() => countVoiceEligible(guests), [guests]);
 
   if (!open) return null;
 
@@ -45,7 +37,7 @@ export function VoiceCampaignModal({
       return;
     }
     try {
-      await start(event, guests, scope);
+      await start(event, guests);
     } catch (e) {
       console.error("[VoiceCampaignModal]", e);
     }
@@ -83,37 +75,22 @@ export function VoiceCampaignModal({
 
         <p className="mt-5 text-sm text-white/70 leading-relaxed">
           השיחה תשאל בקצרה אם מגיעים ל{couple ? ` חתונת ${couple}` : " האירוע"}, כולל
-          מספר נפשות כשאפשר. מי שכבר אישר/ה הגעה לא ייכלל (אלא אם תבחרו &quot;כל
-          מי שיש לו טלפון&quot;).
+          מספר נפשות כשאפשר.
         </p>
 
-        <fieldset className="mt-5 space-y-2">
-          <legend className="text-sm font-medium text-white/80 mb-2">
-            למי לחייג?
-          </legend>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="radio"
-              name="voice-scope"
-              checked={scope === "not_confirmed"}
-              onChange={() => setScope("not_confirmed")}
-            />
-            מי שלא אישר/ה הגעה (
-            <span className="ltr-num">{countVoiceEligible(guests, "not_confirmed")}</span>
-            )
-          </label>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="radio"
-              name="voice-scope"
-              checked={scope === "all_with_phone"}
-              onChange={() => setScope("all_with_phone")}
-            />
-            כל מי שיש לו טלפון תקין (
-            <span className="ltr-num">{countVoiceEligible(guests, "all_with_phone")}</span>
-            )
-          </label>
-        </fieldset>
+        {/* Voice calls cost money, so they're gated — NOT a free "call
+            everyone" tool. Only guests who still haven't answered AFTER at
+            least 2 WhatsApp messages are dialed. */}
+        <div className="mt-5 p-3 rounded-2xl border border-white/10 bg-white/[0.03] text-sm text-white/70 leading-relaxed">
+          <div className="font-medium text-white/85 mb-1">למי מתקשרים?</div>
+          רק למוזמנים ש<strong>עדיין לא ענו</strong> אחרי שכבר נשלחו אליהם
+          לפחות 2 הודעות WhatsApp. כך לא מבזבזים שיחות (וכסף) על מי שכבר הגיב
+          או שעוד לא קיבל תזכורת.
+          <div className="mt-2 text-white/85">
+            מתאימים כעת לשיחה:{" "}
+            <span className="ltr-num font-bold">{eligible}</span>
+          </div>
+        </div>
 
         {error && (
           <p className="mt-4 text-sm text-red-300 flex items-start gap-2">

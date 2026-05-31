@@ -42,6 +42,12 @@ const CATEGORY_EMOJI: Partial<Record<VendorType | string, string>> = {
   designer: "✨",
   transportation: "🚗",
   entertainment: "🎉",
+  bouzouki: "🪕",
+  trumpet: "🎺",
+  "dessert-station": "🍬",
+  "henna-cookies": "🍪",
+  producer: "🎯",
+  costumes: "👗",
 };
 
 export function VendorImagePlaceholder({

@@ -14,7 +14,7 @@ import { useVendorContext } from "@/lib/useVendorContext";
  *
  * Hidden on outbound / pre-onboarding pages where the nav would distract
  * from the marketing flow (`/`, `/signup`, `/rsvp`, `/live/*`, `/privacy`,
- * `/terms`, `/pricing`). Hidden on desktop via `md:hidden`.
+ * `/terms`). Hidden on desktop via `md:hidden`.
  */
 
 const HIDDEN_PREFIXES = [
@@ -23,7 +23,6 @@ const HIDDEN_PREFIXES = [
   "/live",
   "/privacy",
   "/terms",
-  "/pricing",
   "/onboarding",
   "/start",
   "/auth",

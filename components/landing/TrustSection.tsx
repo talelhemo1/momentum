@@ -1,25 +1,28 @@
 import { Shield, Server, Heart, type LucideIcon } from "lucide-react";
 
 /**
- * R48 — trust by demonstration. Bank-grade infrastructure framed
- * honestly (real stack, real security posture, real human support).
+ * R151 — trust, framed honestly. Every claim here is literally true of
+ * the product: HTTPS + Supabase Row-Level-Security, the real stack, and
+ * direct human support. Removed the previous unverifiable claims
+ * (AES-256 / "full GDPR" / "13 audits" / "24-7, 4-hour SLA") to avoid
+ * implying certifications or service levels we don't formally guarantee.
  * Server component, CSS-only.
  */
 const PILLARS: Array<{ icon: LucideIcon; title: string; body: string }> = [
   {
     icon: Shield,
-    title: "אבטחה ברמת בנק",
-    body: "הצפנה AES-256 · GDPR מלא · Row Level Security על כל טבלה · 13 סבבי ביקורת אבטחה לפני השקה",
+    title: "הפרטיות שלכם, קודם",
+    body: "חיבור מוצפן (HTTPS) והרשאות גישה לכל שורת מידע. הנתונים שלכם נשארים שלכם — לא נמכרים ולא משותפים.",
   },
   {
     icon: Server,
-    title: "נבנה על תשתית מובילה",
-    body: "Supabase (DB + Auth) · Twilio (SMS) · OpenAI (AI) · Vercel (CDN) · כלים שמיליוני אפליקציות בעולם משתמשים בהם",
+    title: "נבנה על תשתית מודרנית",
+    body: "Supabase, Vercel ו-Twilio — אותן תשתיות ענן שמאחורי מוצרים מובילים בעולם. מהיר, יציב וזמין.",
   },
   {
     icon: Heart,
-    title: "תמיכה אנושית 24/7",
-    body: "וואטסאפ ישיר עם המייסד · תגובה תוך 4 שעות · ליווי מותאם ל-100 הזוגות הראשונים — כולל שיחת אונבורדינג",
+    title: "תמיכה אנושית",
+    body: "וואטסאפ ישיר עם הצוות שמאחורי המוצר, וליווי אישי לאורך הדרך — מההגדרה הראשונה ועד יום האירוע.",
   },
 ];
 
@@ -31,7 +34,7 @@ export function TrustSection() {
           className="text-center font-bold gradient-text"
           style={{ fontSize: "clamp(2rem, 6vw, 3rem)" }}
         >
-          תשתית של בנק. חוויה של רויאלטי.
+          תשתית רצינית. חוויה יוקרתית.
         </h2>
 
         <div className="mt-14 grid gap-5 md:grid-cols-3">

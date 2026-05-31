@@ -5,9 +5,9 @@ import { createClient } from "@supabase/supabase-js";
 import { getNlpearlConfig, nlpearlMakeCall } from "@/lib/nlpearl";
 import {
   buildExternalGuestId,
-  isGuestEligibleForVoiceCall,
-  type VoiceCampaignScope,
+  isGuestEligibleForVoiceCampaign,
 } from "@/lib/voiceRsvpFromCall";
+import type { GuestStatus } from "@/lib/types";
 import { normalizeIsraeliPhone } from "@/lib/phone";
 import { rateLimit } from "@/lib/serverRateLimit";
 
@@ -16,6 +16,9 @@ interface CampaignGuest {
   name: string;
   phone: string;
   status: string;
+  invitedAt?: string | null;
+  reminderSentAt?: string | null;
+  whatsappRsvpSentAt?: string | null;
 }
 
 interface CampaignEvent {
@@ -27,7 +30,6 @@ interface CampaignEvent {
 
 interface StartBody {
   eventId?: string;
-  scope?: VoiceCampaignScope;
   guests?: CampaignGuest[];
   event?: CampaignEvent;
 }
@@ -43,8 +45,6 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as StartBody;
     const eventId = (body.eventId ?? "").trim();
-    const scope: VoiceCampaignScope =
-      body.scope === "all_with_phone" ? "all_with_phone" : "not_confirmed";
     const guests = Array.isArray(body.guests) ? body.guests : [];
     const event = body.event ?? { hostName: "" };
 
@@ -55,13 +55,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // SERVER-side enforcement of the voice gate (the client filter can be
+    // bypassed): valid phone + no answer yet + already sent ≥2 messages.
+    // There is intentionally no "call everyone" path — voice costs money.
     const eligiblePreview = guests.filter((g) => {
       const { valid } = normalizeIsraeliPhone(g.phone);
       if (!valid) return false;
-      if (scope === "all_with_phone") return true;
-      return isGuestEligibleForVoiceCall(
-        g.status as "pending" | "invited" | "confirmed" | "declined" | "maybe",
-      );
+      return isGuestEligibleForVoiceCampaign({
+        status: g.status as GuestStatus,
+        invitedAt: g.invitedAt ?? null,
+        reminderSentAt: g.reminderSentAt ?? null,
+        whatsappRsvpSentAt: g.whatsappRsvpSentAt ?? null,
+      });
     });
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -95,3 +95,96 @@ export function buildRsvpReminderVariables(
 export function hasRsvpReminderTemplate(): boolean {
   return RSVP_REMINDER_TEMPLATE_SID.startsWith("HX");
 }
+
+/**
+ * R94 — `event_update_he` template. Sent to guests who have ALREADY
+ * confirmed, to (a) remind them the event is near (cron: 7-day + 1-day),
+ * and (b) let the host push a manual update from the dashboard. Same
+ * 5-variable shape as the invitation template so the approved Meta
+ * content can reuse familiar positional slots ({{1}}..{{5}}).
+ */
+export const EVENT_UPDATE_TEMPLATE_SID: string =
+  process.env.NEXT_PUBLIC_TWILIO_TEMPLATE_EVENT_UPDATE_SID ?? "";
+
+/** True when the event-update template SID is configured. Callers MUST
+ *  check this before sending — without an approved template, WhatsApp
+ *  silently drops messages sent outside the 24h window. */
+export function hasEventUpdateTemplate(): boolean {
+  return EVENT_UPDATE_TEMPLATE_SID.startsWith("HX");
+}
+
+export interface EventUpdateVars {
+  /** Guest first name — {{1}} */
+  guestName: string;
+  /** Host names — {{2}} */
+  hostNames: string;
+  /** Formatted (Hebrew) date string — {{3}} */
+  date: string;
+  /** Venue + city — {{4}} */
+  venue: string;
+  /** Bare RSVP / details URL — {{5}} */
+  rsvpUrl: string;
+}
+
+/** Build the positional `variables` map for the event-update template.
+ *  Mirrors `buildGuestInvitationVariables`: defensive trim + truncate
+ *  (R118) so long names / multi-word venues don't trip Meta's silent
+ *  per-variable length cap (error 63020). */
+export function buildEventUpdateVariables(
+  vars: EventUpdateVars,
+): Record<string, string> {
+  return {
+    "1": (vars.guestName ?? "").trim().slice(0, 60) || "אורח",
+    "2": (vars.hostNames ?? "").trim().slice(0, 60) || "המשפחה",
+    "3": (vars.date ?? "").trim().slice(0, 40) || "פרטים בלינק",
+    "4": (vars.venue ?? "").trim().slice(0, 100) || "פרטים בלינק",
+    "5": (vars.rsvpUrl ?? "").trim().slice(0, 200),
+  };
+}
+
+/**
+ * R98 — `event_seating_he` template. Sent a few hours before the event to
+ * every CONFIRMED + seated guest, telling them their table number. Five
+ * positional variables, same defensive shape as the others:
+ *   {{1}} = guest first name
+ *   {{2}} = host names / event name
+ *   {{3}} = table number ("12")
+ *   {{4}} = reception time ("19:00")
+ *   {{5}} = venue (hall · city)
+ */
+export const EVENT_SEATING_TEMPLATE_SID: string =
+  process.env.NEXT_PUBLIC_TWILIO_TEMPLATE_EVENT_SEATING_SID ?? "";
+
+/** True when the seating template SID is configured. Callers MUST check this
+ *  before sending — WhatsApp silently drops out-of-window messages without an
+ *  approved Content Template. */
+export function hasEventSeatingTemplate(): boolean {
+  return EVENT_SEATING_TEMPLATE_SID.startsWith("HX");
+}
+
+export interface EventSeatingVars {
+  /** Guest first name — {{1}} */
+  guestName: string;
+  /** Host names / event name — {{2}} */
+  hostNames: string;
+  /** Table number as a string ("12") — {{3}} */
+  tableNumber: string;
+  /** Reception time ("19:00") — {{4}} */
+  receptionTime: string;
+  /** Venue (hall · city) — {{5}} */
+  venue: string;
+}
+
+/** Build the positional `variables` map for the seating template. Defensive
+ *  trim + truncate (R118) against Meta's silent per-variable length cap. */
+export function buildEventSeatingVariables(
+  vars: EventSeatingVars,
+): Record<string, string> {
+  return {
+    "1": (vars.guestName ?? "").trim().slice(0, 60) || "אורח",
+    "2": (vars.hostNames ?? "").trim().slice(0, 60) || "המשפחה",
+    "3": (vars.tableNumber ?? "").trim().slice(0, 10) || "—",
+    "4": (vars.receptionTime ?? "").trim().slice(0, 20) || "—",
+    "5": (vars.venue ?? "").trim().slice(0, 100) || "פרטים בהזמנה",
+  };
+}

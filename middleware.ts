@@ -26,6 +26,34 @@ import { NextResponse, type NextRequest } from "next/server";
  * only CSP moved here because it needs the per-request nonce.
  */
 export function middleware(request: NextRequest) {
+  // ── OAuth / magic-link rescue (R-fix) ────────────────────────────────
+  // Google/Apple OAuth (and email magic links) finish by redirecting back
+  // with the credentials in the query string: `?code=…` for PKCE, or
+  // `?token_hash=…&type=…` for email verify. They're supposed to land on
+  // /auth/callback. But when Supabase's "Redirect URLs" allowlist doesn't
+  // include /auth/callback, Supabase falls back to the project's SITE URL —
+  // typically the landing root "/". The credentials then sit there
+  // UNPROCESSED and the user looks "bounced back to the homepage, not
+  // logged in" — the exact reported bug.
+  //
+  // Catch it for ANY non-/auth path and forward to the real handler. Same
+  // origin, so the PKCE code-verifier in the browser's localStorage is
+  // intact and /auth/callback's exchangeCodeForSession() works. We force
+  // PKCE in lib/supabase.ts, so the creds are always in the query string
+  // (never only in the URL hash, which wouldn't reach the server).
+  {
+    const { pathname, searchParams } = request.nextUrl;
+    const looksLikeAuthReturn =
+      searchParams.has("code") ||
+      searchParams.has("token_hash") ||
+      searchParams.has("error_description");
+    if (looksLikeAuthReturn && !pathname.startsWith("/auth/")) {
+      const dest = request.nextUrl.clone();
+      dest.pathname = "/auth/callback";
+      return NextResponse.redirect(dest);
+    }
+  }
+
   // 16 random bytes → 22-char base64. crypto.randomUUID() is available in
   // Edge runtime; we strip dashes + base64-encode for compactness.
   const raw = crypto.randomUUID().replace(/-/g, "");

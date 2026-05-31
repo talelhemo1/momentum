@@ -461,7 +461,8 @@ function SignupPageInner() {
                     <span className="ltr-num text-[--foreground-muted]"> (גרסה {TERMS_VERSION})</span>
                     {" "}ול
                     <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[--accent] hover:underline">מדיניות הפרטיות</Link>
-                    , וכי אני בן/בת 18 ומעלה.
+                    , וכי אני בן/בת 18 ומעלה. ידוע לי ש-Momentum היא כלי עזר
+                    לתכנון בלבד ואינה אחראית לאירוע עצמו, לספקים או לתוצאותיו.
                   </span>
                 </label>
               )}

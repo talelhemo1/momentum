@@ -21,6 +21,7 @@ import { VoiceCampaignModal } from "@/components/guests/VoiceCampaignModal";
 import { WhatsAppRsvpModal } from "@/components/guests/WhatsAppRsvpModal";
 import { countVoiceEligible } from "@/hooks/useVoiceCampaign";
 import { countWhatsAppRsvpEligible } from "@/hooks/useWhatsAppRsvp";
+import { BulkReminderViaMomentumModal } from "@/components/guests/BulkReminderViaMomentumModal";
 import { buildWhatsAppMessage } from "@/lib/rsvpLinks";
 import { useGuestWhatsappLink, prewarmGuestWhatsappLinks } from "@/hooks/useGuestWhatsappLink";
 import { trackEvent, trackFirstOnce } from "@/lib/analytics";
@@ -97,6 +98,7 @@ function GuestsPageInner() {
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [showBulkMomentum, setShowBulkMomentum] = useState(false);
+  const [showBulkReminder, setShowBulkReminder] = useState(false);
   const [showExpress, setShowExpress] = useState(false);
   const [showVoice, setShowVoice] = useState(false);
   const [showWhatsAppRsvp, setShowWhatsAppRsvp] = useState(false);
@@ -344,7 +346,7 @@ function GuestsPageInner() {
         (g) =>
           g.status === "pending" && normalizeIsraeliPhone(g.phone).valid,
       ).length,
-      voiceEligible: countVoiceEligible(state.guests, "not_confirmed"),
+      voiceEligible: countVoiceEligible(state.guests),
       whatsappRsvpEligible: countWhatsAppRsvpEligible(state.guests, "not_confirmed"),
     };
   }, [state.guests]);
@@ -479,15 +481,39 @@ function GuestsPageInner() {
                   <span className="ltr-num">{stats.whatsappRsvpEligible}</span>)
                 </button>
               )}
-              {stats.voiceEligible > 0 && (
+              {/* R153 — always show the voice-campaign entry when there are
+                  guests with a phone, so the feature is discoverable. The
+                  GATE (only call guests who didn't answer after ≥2 messages)
+                  still lives inside the modal — it just no longer hides the
+                  whole button when nobody is currently eligible. */}
+              {state.guests.some((g) => g.phone) && (
                 <button
                   onClick={() => setShowVoice(true)}
                   className="btn-secondary inline-flex items-center gap-2"
-                  title="שיחות אוטומטיות קצרות לבדיקת הגעה (NLPearl)"
+                  title="שיחות אוטומטיות לאישור הגעה — מתקשר רק למי שלא ענה אחרי 2 הודעות (NLPearl)"
                 >
                   <Phone size={18} />
-                  שיחות אוטומטיות (
-                  <span className="ltr-num">{stats.voiceEligible}</span>)
+                  שיחות אוטומטיות
+                  {stats.voiceEligible > 0 && (
+                    <span className="ltr-num">({stats.voiceEligible})</span>
+                  )}
+                </button>
+              )}
+              {/* R94 — manual reminder to guests who already CONFIRMED.
+                  Renders only when there's at least one confirmed guest
+                  with a phone; the daily cron handles the automatic
+                  7-day / 1-day nudges, this is the host's "remind now". */}
+              {state.guests.some(
+                (g) => g.status === "confirmed" && g.phone,
+              ) && (
+                <button
+                  type="button"
+                  onClick={() => setShowBulkReminder(true)}
+                  className="btn-secondary inline-flex items-center gap-2"
+                  title="שלח תזכורת WhatsApp לכל מי שכבר אישר הגעה"
+                >
+                  <MessageCircle size={18} />
+                  🔔 שלח תזכורת לאורחים שאישרו
                 </button>
               )}
               <button onClick={() => setShowAdd(true)} className="btn-gold inline-flex items-center gap-2">
@@ -788,6 +814,16 @@ function GuestsPageInner() {
               (g) => g.status === "pending" && g.phone,
             )}
             onClose={() => setShowBulkMomentum(false)}
+          />
+        )}
+        {showBulkReminder && state.event && (
+          <BulkReminderViaMomentumModal
+            origin={tryGetPublicOrigin()}
+            event={state.event}
+            candidates={state.guests.filter(
+              (g) => g.status === "confirmed" && g.phone,
+            )}
+            onClose={() => setShowBulkReminder(false)}
           />
         )}
         <ExpressSendModal

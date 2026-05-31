@@ -230,10 +230,13 @@ async function mintSigningKeyAtomic(): Promise<void> {
 
 function writeState(state: AppState) {
   if (typeof window === "undefined") return;
-  const stamped: AppState = {
-    ...state,
-    updatedAt: new Date().toISOString(),
-  };
+  // Stamp the local edit time on every write. `syncOnLogin` uses this to
+  // tell genuinely-newer offline edits apart from a stale local copy when
+  // it reconciles against the cloud row — without it the conflict check
+  // fell back to `event.createdAt` (fixed at creation), so the "keep newer
+  // local edits" branch never fired and offline edits could be overwritten
+  // by an older cloud payload on the next login.
+  const stamped: AppState = { ...state, updatedAt: new Date().toISOString() };
   // Wrap the write so a quota-exceeded error (private mode, very full
   // storage, browser eviction) doesn't take down the calling action and
   // leave the UI in a half-applied state. We still update the in-memory
@@ -714,6 +717,15 @@ const VENDOR_TO_BUDGET_CATEGORY: Record<VendorType, BudgetCategory> = {
   hosting: "music",
   // R11 — print houses bucket into "invitations" alongside stationery.
   printing: "invitations",
+  // Henna / Mizrahi & richer celebration categories (2026). Musicians →
+  // music; food stations → catering; costumes → attire; producers have no
+  // dedicated line so they sit in "other".
+  bouzouki: "music",
+  trumpet: "music",
+  "dessert-station": "catering",
+  "henna-cookies": "catering",
+  costumes: "attire",
+  producer: "other",
 };
 
 export function getStateSnapshot(): AppState {

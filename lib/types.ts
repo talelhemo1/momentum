@@ -7,7 +7,7 @@ export type EventType =
   | "brit"
   | "birthday"
   | "corporate"
-  | "other";
+  | "henna";
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   wedding: "חתונה",
@@ -18,7 +18,7 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   brit: "ברית",
   birthday: "יום הולדת",
   corporate: "אירוע עסקי",
-  other: "אחר",
+  henna: "חינה",
 };
 
 export type Region =
@@ -182,7 +182,14 @@ export type VendorType =
   | "photobooth"
   | "hosting"
   // R11 — print houses (separate from "stationery" which covers design/digital).
-  | "printing";
+  | "printing"
+  // ─── Henna / Mizrahi & richer celebration categories (2026) ───
+  | "bouzouki"
+  | "trumpet"
+  | "dessert-station"
+  | "henna-cookies"
+  | "producer"
+  | "costumes";
 
 export const VENDOR_TYPE_LABELS: Record<VendorType, string> = {
   venue: "אולמות וגני אירועים",
@@ -213,6 +220,12 @@ export const VENDOR_TYPE_LABELS: Record<VendorType, string> = {
   photobooth: "מתחם צילום",
   hosting: "מנחי טקס / MC",
   printing: "בתי דפוס",
+  bouzouki: "נגני בוזוקי",
+  trumpet: "נגני חצוצרה",
+  "dessert-station": "עמדות מתוקים",
+  "henna-cookies": "עוגיות לחינה",
+  producer: "מפיקי אירועים",
+  costumes: "תלבושות וקפטנים",
 };
 
 export interface Vendor {
@@ -452,8 +465,6 @@ export interface SavedVendor {
 }
 
 export interface AppState {
-  /** Bumped on every local mutation — used by cloud sync conflict resolution. */
-  updatedAt?: string;
   event: EventInfo | null;
   guests: Guest[];
   budget: BudgetItem[];
@@ -485,6 +496,15 @@ export interface AppState {
   blessings: Blessing[];
   /** Photos uploaded in live mode. Same lifecycle as blessings. */
   livePhotos: LivePhoto[];
+  /**
+   * ISO timestamp of the last LOCAL mutation. Stamped by `writeState`
+   * (lib/store.ts) on every write. `syncOnLogin` (lib/sync.ts) compares
+   * it against the cloud row's `updated_at` to detect offline edits that
+   * are newer than the cloud copy — without it that conflict check fell
+   * back to `event.createdAt` (fixed at creation), so offline edits were
+   * silently overwritten by older cloud data on the next login.
+   */
+  updatedAt?: string;
 }
 
 // ───────────────────────── Momentum Live (R20) ───────────────────────────
