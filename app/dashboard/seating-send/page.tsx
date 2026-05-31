@@ -115,19 +115,17 @@ export default function SeatingSendPage() {
   const [step, setStep] = useState<Step>(1);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [receptionTime, setReceptionTime] = useState("19:00");
-  const [venue, setVenue] = useState("");
+  const defaultVenue = useMemo(() => {
+    if (!event) return "";
+    return [event.synagogue, event.city]
+      .map((s) => (s ?? "").trim())
+      .filter(Boolean)
+      .join(" · ");
+  }, [event]);
+  const [venueOverride, setVenueOverride] = useState<string | null>(null);
+  const venue = venueOverride ?? defaultVenue;
+  const setVenue = setVenueOverride;
   const [busy, setBusy] = useState(false);
-
-  // Default the venue from the event once hydrated.
-  useEffect(() => {
-    if (event && !venue) {
-      const v = [event.synagogue, event.city]
-        .map((s) => (s ?? "").trim())
-        .filter(Boolean)
-        .join(" · ");
-      if (v) setVenue(v);
-    }
-  }, [event, venue]);
 
   // ── step-1 local stats (display only; server revalidates) ─────────────────
   const stats = useMemo(() => {
@@ -317,6 +315,7 @@ export default function SeatingSendPage() {
 
   // ── step-4: live tracking (pump + poll + realtime) ────────────────────────
   const [status, setStatus] = useState<StatusResponse | null>(null);
+  const [pumping, setPumping] = useState(false);
   const pumpingRef = useRef(false);
   const stoppedRef = useRef(false);
 
@@ -334,6 +333,7 @@ export default function SeatingSendPage() {
     async (retry = false) => {
       if (!sessionId || pumpingRef.current) return;
       pumpingRef.current = true;
+      setPumping(true);
       stoppedRef.current = false;
       try {
         const headers = await authHeaders();
@@ -358,6 +358,7 @@ export default function SeatingSendPage() {
         }
       } finally {
         pumpingRef.current = false;
+        setPumping(false);
         await refreshStatus();
       }
     },
@@ -494,7 +495,7 @@ export default function SeatingSendPage() {
             <TrackStep
               status={status}
               onRetry={() => pump(true)}
-              pumping={pumpingRef.current}
+              pumping={pumping}
             />
           )}
         </div>

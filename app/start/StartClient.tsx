@@ -24,12 +24,11 @@ export function StartClient() {
   // for THIS user's app_states; if found, hydrate localStorage + redirect
   // to /dashboard. While the check is in flight we render a loader so
   // the user never sees a tier picker they shouldn't.
-  const [cloudCheckDone, setCloudCheckDone] = useState(false);
+  const [cloudCheckDone, setCloudCheckDone] = useState(
+    () => typeof window !== "undefined" && !!readEventId(),
+  );
   useEffect(() => {
-    if (readEventId()) {
-      setCloudCheckDone(true);
-      return;
-    }
+    if (readEventId()) return;
     let cancelled = false;
     void (async () => {
       try {
