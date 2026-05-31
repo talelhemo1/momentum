@@ -162,6 +162,13 @@ html, body {
   font-family: var(--font-heebo), system-ui, -apple-system, "Segoe UI", sans-serif;
   letter-spacing: -0.011em;
   transition: background-color 250ms ease, color 250ms ease;
+  /* R154 — kill the mobile "dancing" (side-to-side rubber-band). The
+     decorative .glow-orb elements are large (700–820px) and positioned at
+     edges / negative offsets, so on a narrow phone they extend past the
+     viewport and create horizontal scroll. `overflow-x: clip` contains
+     them WITHOUT establishing a scroll container (so it never breaks the
+     sticky Header — which `overflow-x: hidden` would risk). */
+  overflow-x: clip;
 }
 
 /* R138 — luxury serif utility. Use on hero names, ceremonial dates,
@@ -181,16 +188,20 @@ body {
     radial-gradient(800px 400px at 100% 20%, var(--bg-radial-2), transparent 70%),
     radial-gradient(700px 400px at 0% 90%, var(--bg-radial-3), transparent 70%);
   background-color: var(--background);
-  background-attachment: fixed;
-  /* R12 §4V — make room for the mobile bottom-nav (56px tall) plus the
-     iOS home indicator (env(safe-area-inset-bottom)). One global rule
-     means individual pages no longer need to repeat `pb-24` and risk
-     forgetting it. Desktop has no bottom-nav so the padding goes away. */
-  padding-bottom: max(env(safe-area-inset-bottom) + 56px, 64px);
+  /* R154 — `background-attachment: fixed` is a notorious iOS Safari
+     scroll-jank source: the browser repaints the fixed background on every
+     frame as the address bar collapses/expands, so the whole page looks
+     like it "shakes/dances". Default to `scroll` (mobile-safe) and only
+     pin it on desktop, where it's cheap and the soft parallax reads well. */
+  background-attachment: scroll;
+  /* R154 — the mobile bottom-nav was removed (R125), so the old 64px floor
+     was just dead space. Keep only the iOS home-indicator inset. */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 @media (min-width: 768px) {
   body {
     padding-bottom: 0;
+    background-attachment: fixed;
   }
 }
 
