@@ -2,7 +2,11 @@ import "server-only";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getNlpearlAuthorizationHeader, getNlpearlConfig } from "@/lib/nlpearl";
+import {
+  getNlpearlAuthDiagnostics,
+  getNlpearlAuthorizationHeader,
+  getNlpearlConfig,
+} from "@/lib/nlpearl";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +17,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: NextRequest) {
   const cfg = getNlpearlConfig();
+  const authDiag = getNlpearlAuthDiagnostics();
   const webhookSecret = (process.env.NLPEARL_WEBHOOK_SECRET ?? "").trim();
 
   const base = {
@@ -20,6 +25,9 @@ export async function GET(req: NextRequest) {
       hasApiKey: !!cfg.apiKey,
       hasAccountId: !!cfg.accountId,
       authUsesAccountColonSecret: cfg.authTokenReady,
+      authMode: authDiag?.mode ?? null,
+      authPlaceholderAccountId: authDiag?.placeholderLiteralAccountId ?? false,
+      authCombinedAccountIdMatchesEnv: authDiag?.combinedAccountIdMatchesEnv ?? null,
       hasOutboundId: !!cfg.outboundId,
       outboundIdLength: cfg.outboundId?.length ?? 0,
       hasWebhookSecret: !!webhookSecret,
@@ -39,6 +47,14 @@ export async function GET(req: NextRequest) {
   } else if (!cfg.authTokenReady) {
     base.issues.push(
       "NLPearl auth incomplete — API requires AccountId:SecretKey. Set NLPEARL_ACCOUNT_ID (workspace Account ID) plus NLPEARL_API_KEY (secret from Copy key), OR set NLPEARL_API_KEY to AccountId:SecretKey. Copy key alone causes 401.",
+    );
+  } else if (authDiag?.placeholderLiteralAccountId) {
+    base.issues.push(
+      'NLPEARL_API_KEY still contains the docs placeholder "AccountId:" — remove it. Use NLPEARL_ACCOUNT_ID=your real ID and NLPEARL_API_KEY=secret only (from Copy key).',
+    );
+  } else if (authDiag?.combinedAccountIdMatchesEnv === false) {
+    base.issues.push(
+      "NLPEARL_API_KEY contains accountId:secret but the part before ':' does not match NLPEARL_ACCOUNT_ID — use one source of truth (split env recommended).",
     );
   }
   if (!cfg.outboundId) {
@@ -112,7 +128,9 @@ export async function GET(req: NextRequest) {
       };
       if (res.status === 401 || res.status === 403) {
         base.issues.push(
-          "NLPearl API rejected auth (401/403) — use AccountId:SecretKey (NLPEARL_ACCOUNT_ID + NLPEARL_API_KEY), same workspace as outbound Pearl; redeploy after Vercel env change.",
+          authDiag?.mode === "combined_in_api_key"
+            ? "NLPearl API rejected auth (401/403) — NLPEARL_API_KEY has a colon so NLPEARL_ACCOUNT_ID is ignored. Set NLPEARL_API_KEY to the secret only, or set NLPEARL_API_KEY to the full real accountId:secret from NLPearl (not the word AccountId). Regenerate key if unsure."
+            : "NLPearl API rejected auth (401/403) — Account ID or secret wrong, revoked, or from a different workspace than NLPEARL_OUTBOUND_ID. In NLPearl: Settings → Account details (ID) + new API key (secret only in Vercel). Redeploy after env change.",
         );
       } else if (res.status === 404) {
         base.issues.push(
