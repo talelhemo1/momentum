@@ -167,6 +167,22 @@ export function countVoiceTestEligible(guests: Guest[]): number {
   }).length;
 }
 
+/** First guest that a test-bypass call would dial (list order). */
+export function getFirstVoiceTestTarget(
+  guests: Guest[],
+): { name: string; phoneDisplay: string } | null {
+  for (const g of guests) {
+    const { valid, phone } = normalizeIsraeliPhone(g.phone);
+    if (!valid || !isGuestEligibleForVoiceTestBypass(g)) continue;
+    const local =
+      phone.length === 12 && phone.startsWith("9725")
+        ? `0${phone.slice(3)}`
+        : g.phone.trim();
+    return { name: g.name, phoneDisplay: local };
+  }
+  return null;
+}
+
 export async function fetchVoiceCampaignConfig(): Promise<VoiceCampaignConfig> {
   try {
     const res = await fetch("/api/guests/voice-campaign/config", {
