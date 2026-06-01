@@ -55,6 +55,44 @@ export function getNlpearlAuthorizationHeader(): string | null {
   return token ? `Bearer ${token}` : null;
 }
 
+export type NlpearlAuthMode = "split_env" | "combined_in_api_key" | "secret_only";
+
+/** Safe auth metadata for diagnose (no secrets). */
+export interface NlpearlAuthDiagnostics {
+  mode: NlpearlAuthMode;
+  apiKeyHasColon: boolean;
+  /** NLPEARL_API_KEY starts with literal "AccountId" from docs — always 401. */
+  placeholderLiteralAccountId: boolean;
+  /** When both env vars set and API_KEY contains `:`, prefixes must match. */
+  combinedAccountIdMatchesEnv: boolean | null;
+  bearerAccountIdPrefixLength: number | null;
+}
+
+export function getNlpearlAuthDiagnostics(): NlpearlAuthDiagnostics | null {
+  const apiKey = normalizeNlpearlSecret(trimEnv("NLPEARL_API_KEY"));
+  if (!apiKey) return null;
+
+  const accountId = trimEnv("NLPEARL_ACCOUNT_ID") || null;
+  const apiKeyHasColon = apiKey.includes(":");
+  const keyAccountPrefix = apiKeyHasColon ? apiKey.split(":")[0] : null;
+
+  let mode: NlpearlAuthMode = "secret_only";
+  if (apiKeyHasColon) mode = "combined_in_api_key";
+  else if (accountId) mode = "split_env";
+
+  return {
+    mode,
+    apiKeyHasColon,
+    placeholderLiteralAccountId:
+      !!keyAccountPrefix && /^accountid$/i.test(keyAccountPrefix.trim()),
+    combinedAccountIdMatchesEnv:
+      apiKeyHasColon && accountId && keyAccountPrefix
+        ? keyAccountPrefix === accountId
+        : null,
+    bearerAccountIdPrefixLength: keyAccountPrefix?.length ?? accountId?.length ?? null,
+  };
+}
+
 export function getNlpearlConfig(): NlpearlConfig {
   const apiKey = normalizeNlpearlSecret(trimEnv("NLPEARL_API_KEY")) || null;
   const accountId = trimEnv("NLPEARL_ACCOUNT_ID") || null;
