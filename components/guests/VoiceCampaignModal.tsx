@@ -189,6 +189,26 @@ export function VoiceCampaignModal({
                     </>
                   )}
                 </p>
+                {last.results
+                  ?.filter((r) => r.ok)
+                  .map((r) => {
+                    const g = guests.find((x) => x.id === r.guestId);
+                    if (!g) return null;
+                    return (
+                      <p key={r.guestId} className="text-white/80 text-xs ltr-num">
+                        בקשה לשיחה אל: <span className="font-bold">{g.name}</span>
+                        {" · "}
+                        {g.phone}
+                        {r.callId ? ` · id ${r.callId}` : ""}
+                      </p>
+                    );
+                  })}
+                {(last.queued ?? 0) > 0 && (
+                  <p className="text-white/55 text-xs">
+                    אם הטלפון לא צלצל: בדוק ב-NLPearl שהשיחה יצאה למספר למעלה (שעות חיוג,
+                    מספר יוצא, חסימת ספאם). בתור ב-Momentum ≠ תמיד צלצול מיידי.
+                  </p>
+                )}
                 {(last.failed ?? 0) > 0 &&
                   last.results?.filter((r) => !r.ok).length > 0 && (
                     <ul className="text-xs text-red-200/90 list-disc pr-4 space-y-1">
