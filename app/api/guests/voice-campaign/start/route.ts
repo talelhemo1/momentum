@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         configured: false,
         message:
-          "NLPearl עדיין לא מחובר. הוסף NLPEARL_API_KEY ו-NLPEARL_OUTBOUND_ID ב-Vercel (Preview) ואז נסה שוב.",
+          "NLPearl עדיין לא מחובר. הוסף NLPEARL_ACCOUNT_ID, NLPEARL_API_KEY, ו-NLPEARL_OUTBOUND_ID ב-Vercel ואז נסה שוב.",
         eligible: eligible.length,
         queued: 0,
         failed: 0,
