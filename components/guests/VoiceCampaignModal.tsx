@@ -7,6 +7,7 @@ import {
   countVoiceEligible,
   countVoiceTestEligible,
   fetchVoiceCampaignConfig,
+  getFirstVoiceTestTarget,
   useVoiceCampaign,
 } from "@/hooks/useVoiceCampaign";
 
@@ -26,6 +27,7 @@ export function VoiceCampaignModal({
 
   const eligible = useMemo(() => countVoiceEligible(guests), [guests]);
   const testEligible = useMemo(() => countVoiceTestEligible(guests), [guests]);
+  const testTarget = useMemo(() => getFirstVoiceTestTarget(guests), [guests]);
 
   useEffect(() => {
     if (!open) return;
@@ -44,13 +46,16 @@ export function VoiceCampaignModal({
   const run = async (testBypass: boolean) => {
     const count = testBypass ? testEligible : eligible;
     if (count === 0) return;
-    const limitNote = testBypass
-      ? "\n\nמצב בדיקה: שיחה אחת למוזמן הראשון ברשימה (ללא דרישת 2 הודעות וואטסאפ)."
-      : "";
+    const targetLine =
+      testBypass && testTarget
+        ? `\n\nייתקשר אל: ${testTarget.name} · ${testTarget.phoneDisplay}`
+        : testBypass
+          ? "\n\nמצב בדיקה: שיחה אחת למוזמן הראשון ברשימה (ללא דרישת 2 הודעות וואטסאפ)."
+          : "";
     if (
       !window.confirm(
         testBypass
-          ? `לבצע בדיקת שיחה אחת ל-${count} מוזמנים מתאימים?${limitNote}`
+          ? `לבצע בדיקת שיחה אחת?${targetLine}`
           : `להתחיל שיחות אוטומטיות ל-${count} מוזמנים?\n\nהשיחה תהיה קצרה (~30 שניות) דרך NLPearl. תוצאות יעדכנו את סטטוס ההגעה אוטומטית כשהשיחה מצליחה.`,
       )
     ) {
@@ -128,6 +133,18 @@ export function VoiceCampaignModal({
               זמינים לבדיקה:{" "}
               <span className="ltr-num font-bold">{testEligible}</span>
             </p>
+            {testTarget ? (
+              <p className="mt-2 text-purple-100/90 ltr-num">
+                שיחת הבדיקה תצא אל:{" "}
+                <span className="font-bold">{testTarget.name}</span>
+                {" · "}
+                {testTarget.phoneDisplay}
+              </p>
+            ) : (
+              <p className="mt-2 text-amber-200/80 text-xs">
+                אין מוזמן מתאים — הוסף מוזמן ממתין עם טלפון תקין (למשל 0522933311).
+              </p>
+            )}
           </div>
         )}
 
