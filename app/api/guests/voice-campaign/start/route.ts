@@ -6,6 +6,8 @@ import { getNlpearlConfig, nlpearlMakeCall } from "@/lib/nlpearl";
 import {
   buildExternalGuestId,
   isGuestEligibleForVoiceCampaign,
+  isGuestEligibleForVoiceTestBypass,
+  isNlpearlVoiceTestBypassEnabled,
 } from "@/lib/voiceRsvpFromCall";
 import type { GuestStatus } from "@/lib/types";
 import { normalizeIsraeliPhone } from "@/lib/phone";
@@ -32,6 +34,8 @@ interface StartBody {
   eventId?: string;
   guests?: CampaignGuest[];
   event?: CampaignEvent;
+  /** Server allows only when NLPEARL_VOICE_TEST_BYPASS=true; caps at 1 guest. */
+  testBypass?: boolean;
 }
 
 function eventDisplayName(ev: CampaignEvent): string {
@@ -55,18 +59,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // SERVER-side enforcement of the voice gate (the client filter can be
-    // bypassed): valid phone + no answer yet + already sent ≥2 messages.
-    // There is intentionally no "call everyone" path — voice costs money.
+    const testBypass =
+      body.testBypass === true && isNlpearlVoiceTestBypassEnabled();
+
+    // SERVER-side enforcement (client filters can be bypassed).
     const eligiblePreview = guests.filter((g) => {
       const { valid } = normalizeIsraeliPhone(g.phone);
       if (!valid) return false;
-      return isGuestEligibleForVoiceCampaign({
+      const signals = {
         status: g.status as GuestStatus,
         invitedAt: g.invitedAt ?? null,
         reminderSentAt: g.reminderSentAt ?? null,
         whatsappRsvpSentAt: g.whatsappRsvpSentAt ?? null,
-      });
+      };
+      if (testBypass) return isGuestEligibleForVoiceTestBypass(signals);
+      return isGuestEligibleForVoiceCampaign(signals);
     });
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -103,14 +110,21 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (!rateLimit("voice-campaign", user.id, 3, 60 * 60 * 1000)) {
+    const rateBucket = testBypass ? "voice-campaign-test" : "voice-campaign";
+    const rateMax = testBypass ? 15 : 3;
+    if (!rateLimit(rateBucket, user.id, rateMax, 60 * 60 * 1000)) {
       return NextResponse.json(
-        { error: "rate_limited", message: "יותר מדי קמפיינים בשעה האחרונה" },
+        {
+          error: "rate_limited",
+          message: testBypass
+            ? "יותר מדי בדיקות שיחה בשעה האחרונה"
+            : "יותר מדי קמפיינים בשעה האחרונה",
+        },
         { status: 429 },
       );
     }
 
-    const eligible = eligiblePreview;
+    const eligible = testBypass ? eligiblePreview.slice(0, 1) : eligiblePreview;
 
     const nlpearl = getNlpearlConfig();
     if (!nlpearl.configured) {
@@ -164,6 +178,7 @@ export async function POST(req: NextRequest) {
       queued,
       failed,
       results,
+      testBypass,
     });
   } catch (e) {
     console.error("[voice-campaign/start]", e);

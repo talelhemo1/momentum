@@ -4,6 +4,8 @@ import {
   mapVoiceCallToRsvp,
   parseExternalGuestId,
   isGuestEligibleForVoiceCall,
+  isGuestEligibleForVoiceCampaign,
+  isGuestEligibleForVoiceTestBypass,
 } from "@/lib/voiceRsvpFromCall";
 
 describe("voiceRsvpFromCall", () => {
@@ -49,5 +51,27 @@ describe("voiceRsvpFromCall", () => {
     expect(
       mapVoiceCallToRsvp({ conversationStatus: "VoiceMailLeft" }),
     ).toBeNull();
+  });
+
+  it("campaign gate requires 2 messages; test bypass does not", () => {
+    const pending = { status: "pending" as const };
+    expect(
+      isGuestEligibleForVoiceCampaign({
+        ...pending,
+        invitedAt: null,
+        reminderSentAt: null,
+      }),
+    ).toBe(false);
+    expect(
+      isGuestEligibleForVoiceCampaign({
+        ...pending,
+        invitedAt: "2026-01-01",
+        reminderSentAt: "2026-01-02",
+      }),
+    ).toBe(true);
+    expect(isGuestEligibleForVoiceTestBypass(pending)).toBe(true);
+    expect(isGuestEligibleForVoiceTestBypass({ status: "confirmed" })).toBe(
+      false,
+    );
   });
 });

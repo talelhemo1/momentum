@@ -230,3 +230,19 @@ export function isGuestEligibleForVoiceCampaign(
   if (answered) return false;
   return guestMessagesSent(g) >= VOICE_MIN_MESSAGES;
 }
+
+/** Host-testing only (server must also set NLPEARL_VOICE_TEST_BYPASS). Skips the
+ *  ≥2 WhatsApp messages gate; still excludes guests who already answered. */
+export function isGuestEligibleForVoiceTestBypass(
+  g: Pick<VoiceCallGuestSignals, "status">,
+): boolean {
+  const answered =
+    g.status === "confirmed" || g.status === "declined" || g.status === "maybe";
+  return !answered;
+}
+
+export function isNlpearlVoiceTestBypassEnabled(): boolean {
+  return (
+    (process.env.NLPEARL_VOICE_TEST_BYPASS ?? "").trim().toLowerCase() === "true"
+  );
+}
