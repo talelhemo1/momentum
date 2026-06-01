@@ -3,8 +3,16 @@
 import { useCallback, useState } from "react";
 import type { EventInfo, Guest } from "@/lib/types";
 import { getSupabase } from "@/lib/supabase";
-import { isGuestEligibleForVoiceCampaign } from "@/lib/voiceRsvpFromCall";
+import {
+  isGuestEligibleForVoiceCampaign,
+  isGuestEligibleForVoiceTestBypass,
+} from "@/lib/voiceRsvpFromCall";
 import { normalizeIsraeliPhone } from "@/lib/phone";
+
+export interface VoiceCampaignConfig {
+  testBypassAvailable: boolean;
+  testMaxGuests: number;
+}
 
 export interface VoiceCampaignResult {
   guestId: string;
@@ -20,6 +28,7 @@ export interface VoiceCampaignResponse {
   queued: number;
   failed: number;
   results: VoiceCampaignResult[];
+  testBypass?: boolean;
 }
 
 function readErrorMessage(data: unknown, status: number): string {
@@ -43,6 +52,7 @@ function normalizeResponse(data: unknown): VoiceCampaignResponse {
     queued: typeof d.queued === "number" ? d.queued : 0,
     failed: typeof d.failed === "number" ? d.failed : 0,
     results: Array.isArray(d.results) ? (d.results as VoiceCampaignResult[]) : [],
+    testBypass: d.testBypass === true,
   };
 }
 
@@ -55,6 +65,7 @@ export function useVoiceCampaign() {
     async (
       event: EventInfo,
       guests: Guest[],
+      options?: { testBypass?: boolean },
     ): Promise<VoiceCampaignResponse | null> => {
       setBusy(true);
       setError(null);
@@ -100,6 +111,7 @@ export function useVoiceCampaign() {
               reminderSentAt: g.reminderSentAt ?? null,
               whatsappRsvpSentAt: g.whatsappRsvpSentAt ?? null,
             })),
+            ...(options?.testBypass ? { testBypass: true } : {}),
           }),
         });
 
@@ -144,4 +156,32 @@ export function countVoiceEligible(guests: Guest[]): number {
     if (!valid) return false;
     return isGuestEligibleForVoiceCampaign(g);
   }).length;
+}
+
+/** Test path: valid phone + not yet answered (no 2-WhatsApp requirement). */
+export function countVoiceTestEligible(guests: Guest[]): number {
+  return guests.filter((g) => {
+    const { valid } = normalizeIsraeliPhone(g.phone);
+    if (!valid) return false;
+    return isGuestEligibleForVoiceTestBypass(g);
+  }).length;
+}
+
+export async function fetchVoiceCampaignConfig(): Promise<VoiceCampaignConfig> {
+  try {
+    const res = await fetch("/api/guests/voice-campaign/config", {
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      return { testBypassAvailable: false, testMaxGuests: 1 };
+    }
+    const data = (await res.json()) as VoiceCampaignConfig;
+    return {
+      testBypassAvailable: data.testBypassAvailable === true,
+      testMaxGuests:
+        typeof data.testMaxGuests === "number" ? data.testMaxGuests : 1,
+    };
+  } catch {
+    return { testBypassAvailable: false, testMaxGuests: 1 };
+  }
 }

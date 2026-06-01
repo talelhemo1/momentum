@@ -1,9 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
-import { X, Phone, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { X, Phone, Loader2, AlertCircle, CheckCircle2, FlaskConical } from "lucide-react";
 import type { EventInfo, Guest } from "@/lib/types";
-import { countVoiceEligible, useVoiceCampaign } from "@/hooks/useVoiceCampaign";
+import {
+  countVoiceEligible,
+  countVoiceTestEligible,
+  fetchVoiceCampaignConfig,
+  useVoiceCampaign,
+} from "@/hooks/useVoiceCampaign";
 
 export function VoiceCampaignModal({
   open,
@@ -17,8 +22,17 @@ export function VoiceCampaignModal({
   event: EventInfo;
 }) {
   const { busy, last, error, start } = useVoiceCampaign();
+  const [testBypassAvailable, setTestBypassAvailable] = useState(false);
 
   const eligible = useMemo(() => countVoiceEligible(guests), [guests]);
+  const testEligible = useMemo(() => countVoiceTestEligible(guests), [guests]);
+
+  useEffect(() => {
+    if (!open) return;
+    void fetchVoiceCampaignConfig().then((c) =>
+      setTestBypassAvailable(c.testBypassAvailable),
+    );
+  }, [open]);
 
   if (!open) return null;
 
@@ -27,17 +41,23 @@ export function VoiceCampaignModal({
       ? `${event.hostName} ו${event.partnerName}`
       : event.hostName;
 
-  const run = async () => {
-    if (eligible === 0) return;
+  const run = async (testBypass: boolean) => {
+    const count = testBypass ? testEligible : eligible;
+    if (count === 0) return;
+    const limitNote = testBypass
+      ? "\n\nמצב בדיקה: שיחה אחת למוזמן הראשון ברשימה (ללא דרישת 2 הודעות וואטסאפ)."
+      : "";
     if (
       !window.confirm(
-        `להתחיל שיחות אוטומטיות ל-${eligible} מוזמנים?\n\nהשיחה תהיה קצרה (~30 שניות) דרך NLPearl. תוצאות יעדכנו את סטטוס ההגעה אוטומטית כשהשיחה מצליחה.`,
+        testBypass
+          ? `לבצע בדיקת שיחה אחת ל-${count} מוזמנים מתאימים?${limitNote}`
+          : `להתחיל שיחות אוטומטיות ל-${count} מוזמנים?\n\nהשיחה תהיה קצרה (~30 שניות) דרך NLPearl. תוצאות יעדכנו את סטטוס ההגעה אוטומטית כשהשיחה מצליחה.`,
       )
     ) {
       return;
     }
     try {
-      await start(event, guests);
+      await start(event, guests, testBypass ? { testBypass: true } : undefined);
     } catch (e) {
       console.error("[VoiceCampaignModal]", e);
     }
@@ -78,19 +98,38 @@ export function VoiceCampaignModal({
           מספר נפשות כשאפשר.
         </p>
 
-        {/* Voice calls cost money, so they're gated — NOT a free "call
-            everyone" tool. Only guests who still haven't answered AFTER at
-            least 2 WhatsApp messages are dialed. */}
         <div className="mt-5 p-3 rounded-2xl border border-white/10 bg-white/[0.03] text-sm text-white/70 leading-relaxed">
-          <div className="font-medium text-white/85 mb-1">למי מתקשרים?</div>
+          <div className="font-medium text-white/85 mb-1">למי מתקשרים? (שגרה)</div>
           רק למוזמנים ש<strong>עדיין לא ענו</strong> אחרי שכבר נשלחו אליהם
-          לפחות 2 הודעות WhatsApp. כך לא מבזבזים שיחות (וכסף) על מי שכבר הגיב
-          או שעוד לא קיבל תזכורת.
+          לפחות 2 הודעות WhatsApp דרך Momentum (הזמנה + תזכורת / תבנית RSVP).
           <div className="mt-2 text-white/85">
             מתאימים כעת לשיחה:{" "}
             <span className="ltr-num font-bold">{eligible}</span>
           </div>
         </div>
+
+        {testBypassAvailable && (
+          <div
+            className="mt-4 p-3 rounded-2xl border text-sm leading-relaxed"
+            style={{
+              borderColor: "rgba(168,85,247,0.35)",
+              background: "rgba(168,85,247,0.08)",
+            }}
+          >
+            <div className="font-medium text-purple-200/95 mb-1 flex items-center gap-2">
+              <FlaskConical size={16} />
+              בדיקה (ללא תנאי וואטסאפ)
+            </div>
+            <p className="text-white/65">
+              לבדיקת NLPearl בלבד: מתקשר למוזמן אחד עם טלפון תקין שעדיין לא אישר/ה,
+              בלי לשלוח קודם 2 הודעות. לא לשימוש ביום האירוע.
+            </p>
+            <p className="mt-2 text-white/85">
+              זמינים לבדיקה:{" "}
+              <span className="ltr-num font-bold">{testEligible}</span>
+            </p>
+          </div>
+        )}
 
         {error && (
           <p className="mt-4 text-sm text-red-300 flex items-start gap-2">
@@ -122,7 +161,7 @@ export function VoiceCampaignModal({
               <>
                 <p className="flex items-center gap-2 text-emerald-300/90 font-medium">
                   <CheckCircle2 size={16} />
-                  קמפיין הופעל
+                  {last.testBypass ? "בדיקת שיחה הופעלה" : "קמפיין הופעל"}
                 </p>
                 <p className="text-white/70">
                   בתור: <span className="ltr-num">{last.queued ?? 0}</span>
@@ -166,7 +205,7 @@ export function VoiceCampaignModal({
         <div className="mt-6 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={run}
+            onClick={() => run(false)}
             disabled={busy || eligible === 0}
             className="btn-gold inline-flex items-center gap-2 disabled:opacity-40"
           >
@@ -177,6 +216,18 @@ export function VoiceCampaignModal({
             )}
             {busy ? "מפעיל..." : `התחל שיחות (${eligible})`}
           </button>
+          {testBypassAvailable && (
+            <button
+              type="button"
+              onClick={() => run(true)}
+              disabled={busy || testEligible === 0}
+              className="btn-secondary inline-flex items-center gap-2 disabled:opacity-40 border-purple-400/30"
+              title="בדיקת NLPearl — שיחה אחת, בלי דרישת 2 הודעות וואטסאפ"
+            >
+              <FlaskConical size={18} />
+              {busy ? "מפעיל..." : `בדיקת שיחה (${testEligible})`}
+            </button>
+          )}
           <button type="button" onClick={onClose} className="btn-secondary">
             סגור
           </button>
