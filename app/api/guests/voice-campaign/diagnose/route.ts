@@ -2,7 +2,7 @@ import "server-only";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getNlpearlConfig } from "@/lib/nlpearl";
+import { getNlpearlAuthorizationHeader, getNlpearlConfig } from "@/lib/nlpearl";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,8 @@ export async function GET(req: NextRequest) {
   const base = {
     nlpearl: {
       hasApiKey: !!cfg.apiKey,
+      hasAccountId: !!cfg.accountId,
+      authUsesAccountColonSecret: cfg.authTokenReady,
       hasOutboundId: !!cfg.outboundId,
       outboundIdLength: cfg.outboundId?.length ?? 0,
       hasWebhookSecret: !!webhookSecret,
@@ -33,6 +35,10 @@ export async function GET(req: NextRequest) {
   if (!cfg.apiKey) {
     base.issues.push(
       "NLPEARL_API_KEY missing in Vercel Production — modal shows “NLPearl not connected”.",
+    );
+  } else if (!cfg.authTokenReady) {
+    base.issues.push(
+      "NLPearl auth incomplete — API requires AccountId:SecretKey. Set NLPEARL_ACCOUNT_ID (workspace Account ID) plus NLPEARL_API_KEY (secret from Copy key), OR set NLPEARL_API_KEY to AccountId:SecretKey. Copy key alone causes 401.",
     );
   }
   if (!cfg.outboundId) {
@@ -79,14 +85,15 @@ export async function GET(req: NextRequest) {
     bodyPreview: string;
   } | null = null;
 
-  if (cfg.apiKey && cfg.outboundId) {
+  const authorization = getNlpearlAuthorizationHeader();
+  if (authorization && cfg.outboundId) {
     try {
       const res = await fetch(
         `https://api.nlpearl.ai/v1/Outbound/${cfg.outboundId}/Call`,
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${cfg.apiKey}`,
+            Authorization: authorization,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -104,7 +111,9 @@ export async function GET(req: NextRequest) {
         hint: probeHint(res.status, text),
       };
       if (res.status === 401 || res.status === 403) {
-        base.issues.push("NLPearl API rejected the key (401/403) — regenerate API key in NLPearl.");
+        base.issues.push(
+          "NLPearl API rejected auth (401/403) — use AccountId:SecretKey (NLPEARL_ACCOUNT_ID + NLPEARL_API_KEY), same workspace as outbound Pearl; redeploy after Vercel env change.",
+        );
       } else if (res.status === 404) {
         base.issues.push(
           "NLPearl outbound ID not found (404) — confirm NLPEARL_OUTBOUND_ID matches Pearl ID in platform.",
@@ -136,7 +145,7 @@ export async function GET(req: NextRequest) {
 }
 
 function probeHint(status: number, body: string): string {
-  if (status === 401 || status === 403) return "invalid_api_key";
+  if (status === 401 || status === 403) return "invalid_auth_account_or_secret";
   if (status === 404) return "invalid_outbound_id";
   if (status === 400) return "api_reachable_bad_request";
   if (status >= 200 && status < 300) return "call_may_have_been_accepted";

@@ -9,19 +9,64 @@ const API_BASE = "https://api.nlpearl.ai/v1";
 
 export interface NlpearlConfig {
   configured: boolean;
+  /** Raw secret from env (or full `accountId:secret` if stored in NLPEARL_API_KEY). */
   apiKey: string | null;
   outboundId: string | null;
+  accountId: string | null;
+  /** True when Authorization will use AccountId:SecretKey (required by NLPearl). */
+  authTokenReady: boolean;
+}
+
+function trimEnv(name: string): string {
+  return (process.env[name] ?? "").trim();
+}
+
+/** Strip accidental `Bearer ` prefix from pasted env values. */
+function normalizeNlpearlSecret(raw: string): string {
+  const t = raw.trim();
+  if (t.toLowerCase().startsWith("bearer ")) {
+    return t.slice(7).trim();
+  }
+  return t;
+}
+
+/**
+ * NLPearl expects `Authorization: Bearer AccountId:SecretKey`
+ * @see https://developers.nlpearl.ai/api-reference/authorization
+ */
+export function getNlpearlBearerToken(): string | null {
+  const secret = normalizeNlpearlSecret(trimEnv("NLPEARL_API_KEY"));
+  if (!secret) return null;
+
+  if (secret.includes(":")) {
+    return secret;
+  }
+
+  const accountId = trimEnv("NLPEARL_ACCOUNT_ID");
+  if (accountId) {
+    return `${accountId}:${secret}`;
+  }
+
+  return secret;
+}
+
+export function getNlpearlAuthorizationHeader(): string | null {
+  const token = getNlpearlBearerToken();
+  return token ? `Bearer ${token}` : null;
 }
 
 export function getNlpearlConfig(): NlpearlConfig {
-  const apiKey = (process.env.NLPEARL_API_KEY ?? "").trim() || null;
+  const apiKey = normalizeNlpearlSecret(trimEnv("NLPEARL_API_KEY")) || null;
+  const accountId = trimEnv("NLPEARL_ACCOUNT_ID") || null;
   const outboundId =
-    (process.env.NLPEARL_OUTBOUND_ID ?? process.env.NLPEARL_OUTBOUND_CAMPAIGN_ID ?? "")
-      .trim() || null;
+    (trimEnv("NLPEARL_OUTBOUND_ID") || trimEnv("NLPEARL_OUTBOUND_CAMPAIGN_ID")) || null;
+  const authTokenReady = !!(apiKey && (accountId || apiKey.includes(":")));
   return {
-    configured: !!(apiKey && outboundId),
+    configured: !!(authTokenReady && outboundId),
     apiKey,
     outboundId,
+    accountId,
+    authTokenReady,
   };
 }
 
@@ -39,8 +84,9 @@ export interface MakeCallResult {
 }
 
 export async function nlpearlMakeCall(input: MakeCallInput): Promise<MakeCallResult> {
-  const { configured, apiKey, outboundId } = getNlpearlConfig();
-  if (!configured || !apiKey || !outboundId) {
+  const { configured, outboundId } = getNlpearlConfig();
+  const authorization = getNlpearlAuthorizationHeader();
+  if (!configured || !authorization || !outboundId) {
     return { ok: false, error: "nlpearl_not_configured" };
   }
 
@@ -48,7 +94,7 @@ export async function nlpearlMakeCall(input: MakeCallInput): Promise<MakeCallRes
     const res = await fetch(`${API_BASE}/Outbound/${outboundId}/Call`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: authorization,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

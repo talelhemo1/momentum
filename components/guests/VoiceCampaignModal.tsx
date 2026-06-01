@@ -218,7 +218,7 @@ export function VoiceCampaignModal({
                         .map((r) => (
                           <li key={r.guestId}>
                             {r.error === "nlpearl_401" || r.error === "nlpearl_403"
-                              ? "מפתח API שגוי ב-Vercel (NLPEARL_API_KEY)"
+                              ? "אימות NLPearl שגוי — הוסף NLPEARL_ACCOUNT_ID + NLPEARL_API_KEY ב-Vercel (פורמט AccountId:SecretKey)"
                               : r.error === "nlpearl_404"
                                 ? "מזהה Pearl שגוי (NLPEARL_OUTBOUND_ID)"
                                 : r.error === "nlpearl_not_configured"
