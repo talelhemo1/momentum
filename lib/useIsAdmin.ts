@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSupabase } from "./supabase";
 import { isFounderEmail } from "./constants";
+import { useUser } from "./user";
 
 /**
  * Returns `true` if the signed-in user's email appears in `admin_emails`.
@@ -19,6 +20,17 @@ const CACHE_KEY = "momentum.isAdmin.v1";
 let cached: boolean | null = null;
 
 export function useIsAdmin(): boolean {
+  // R161b — robust founder detection that does NOT depend on the Supabase
+  // session being live. The app keeps its own signed-in user in
+  // localStorage (lib/user.ts), which survives even when the Supabase
+  // session is momentarily unreadable or mid-refresh — exactly the state
+  // that was hiding the "admin dashboard" link from the founder's menu.
+  // `identifier` is the email for Google/Apple sign-ins. This is UX only;
+  // the server-side requireAdmin still enforces the real check (a valid
+  // JWT), so showing the link off the persisted email is safe.
+  const { user } = useUser();
+  const appUserIsFounder = !!user && isFounderEmail(user.identifier);
+
   // Optimistic boot — read the localStorage hint before any setState so
   // the first render already has the right answer for returning admins.
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
@@ -30,6 +42,19 @@ export function useIsAdmin(): boolean {
       return false;
     }
   });
+
+  // The founder is admin the instant the app knows they're signed in as
+  // the founder email — no network/session round-trip required. We only
+  // warm the cache here (a plain side effect — NOT setState, which the
+  // react-hooks lint forbids in effects); the `return` below derives the
+  // actual value from `appUserIsFounder`, so no re-render is needed.
+  useEffect(() => {
+    if (!appUserIsFounder) return;
+    cached = true;
+    try {
+      window.localStorage.setItem(CACHE_KEY, "1");
+    } catch {}
+  }, [appUserIsFounder]);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -89,5 +114,8 @@ export function useIsAdmin(): boolean {
     };
   }, []);
 
-  return isAdmin;
+  // `|| appUserIsFounder` is the safety net: even if the async session
+  // read above came back empty and blanked `isAdmin`, the founder still
+  // sees their admin entry as long as the app knows they're signed in.
+  return isAdmin || appUserIsFounder;
 }
