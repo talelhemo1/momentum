@@ -62,15 +62,23 @@ export function AdminGuard({
           router.replace("/dashboard");
           return;
         }
+        // R161 — use getSession() (local-first, auto-refreshes the token)
+        // as the gate instead of getUser() (a network round-trip that
+        // returns null whenever the token needs a refresh or the network
+        // hiccups — which bounced the founder to /signup, i.e. "can't get
+        // into admin"). getSession() hands back BOTH the email and the
+        // access token in one local call. This gate is UX only; the real
+        // security boundary is the server-side requireAdmin in every
+        // /api/admin/* route, which still verifies the JWT via getUser.
         const {
-          data: { user },
-        } = await supabase.auth.getUser();
+          data: { session },
+        } = await supabase.auth.getSession();
         if (cancelled) return;
-        if (!user?.email) {
+        const email = session?.user?.email?.toLowerCase().trim();
+        if (!email || !session?.access_token) {
           router.replace(`/signup?returnTo=${encodeURIComponent(returnTo)}`);
           return;
         }
-        const email = user.email.toLowerCase().trim();
 
         // R131 — FOUNDER-ONLY (owner request). admin_emails fallback
         // was removed in lockstep with lib/admin/server.ts so the
@@ -80,14 +88,6 @@ export function AdminGuard({
         if (!isFounderEmail(email)) {
           console.warn("[admin-guard] non-founder attempted access");
           router.replace("/dashboard");
-          return;
-        }
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (cancelled) return;
-        if (!session?.access_token) {
-          router.replace(`/signup?returnTo=${encodeURIComponent(returnTo)}`);
           return;
         }
         setToken(session.access_token);

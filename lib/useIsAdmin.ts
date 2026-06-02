@@ -37,9 +37,14 @@ export function useIsAdmin(): boolean {
     let cancelled = false;
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        // R161 — getSession() (local-first, auto-refreshing) instead of
+        // getUser() (network round-trip). A transient getUser() null was
+        // hiding the "admin dashboard" link from the founder's menu even
+        // when they were signed in.
+        const { data: { session } } = await supabase.auth.getSession();
         if (cancelled) return;
-        if (!user?.email) {
+        const sessionEmail = session?.user?.email;
+        if (!sessionEmail) {
           cached = false;
           setIsAdmin(false);
           try {
@@ -47,7 +52,7 @@ export function useIsAdmin(): boolean {
           } catch {}
           return;
         }
-        const email = user.email.toLowerCase().trim();
+        const email = sessionEmail.toLowerCase().trim();
 
         // R64 (R79) — founder bypass. Never re-issue the DB query if
         // we know the email is the founder; this works even if the

@@ -124,14 +124,23 @@ export default function AdminDashboardPage() {
           return;
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user?.email) {
+        // R161 — gate on getSession() (local-first, auto-refreshing),
+        // NOT getUser(). getUser() is a network round-trip that returns
+        // null whenever the access token needs a refresh or the network
+        // hiccups (worse under Safari ITP), which bounced the founder to
+        // /signup — "can't get into admin". getSession() gives the email
+        // AND the access token in one local call, with no inconsistency
+        // window between the two. The client gate is UX only; the real
+        // security is server-side requireAdmin (still verifies the JWT).
+        const { data: { session } } = await supabase.auth.getSession();
+        const sessionEmail = session?.user?.email;
+        if (!sessionEmail || !session?.access_token) {
           router.replace("/signup?returnTo=/admin/dashboard");
           return;
         }
         // Surface the email up front so the "not authorized" view can
         // show it.
-        const userEmail = user.email.toLowerCase().trim();
+        const userEmail = sessionEmail.toLowerCase().trim();
         setSignedInEmail(userEmail);
 
         // R131 — FOUNDER-ONLY. Owner asked for /admin to be locked to
@@ -142,9 +151,6 @@ export default function AdminDashboardPage() {
         // false and the dashboard JSX never renders.
         if (!isFounderEmail(userEmail)) return;
         setAuthorized(true);
-
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
         setAdminToken(session.access_token);
 
         const res = await fetch("/api/admin/stats", {
