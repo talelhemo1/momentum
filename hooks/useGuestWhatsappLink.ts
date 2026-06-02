@@ -43,12 +43,25 @@ interface BuiltLink {
 }
 const linkCache = new Map<CacheKey, Promise<BuiltLink>>();
 
-function cacheKeyFor(origin: string, eventId: string, guestId: string, token?: string): CacheKey {
+function cacheKeyFor(
+  origin: string,
+  eventId: string,
+  guestId: string,
+  token?: string,
+  invitationImageUrl?: string,
+): CacheKey {
   // CRITICAL: origin must be in the key. Without it, a render that happened
   // with an empty origin (SSR/first hydration) cached a relative-URL Promise
   // — and every subsequent render with the real origin got back the broken
   // URL. WhatsApp shipped `/rsvp?...` to guests; tapping it opened blank.
-  return `${origin}|${eventId}:${guestId}:${token ?? ""}`;
+  //
+  // R162 — the invitation image URL is ALSO part of the key. The built link
+  // embeds it in the `?d=` payload (encodeInvitation `iv`). Without it in
+  // the key, a link pre-warmed/built BEFORE the host uploaded their designed
+  // invitation stayed cached, so the guest got an image-less link even
+  // after the upload. Keying on it rebuilds the link the moment the image
+  // is added / changed / removed.
+  return `${origin}|${eventId}:${guestId}:${token ?? ""}|${invitationImageUrl ?? ""}`;
 }
 
 async function buildLink(origin: string, event: EventInfo, guest: Guest): Promise<BuiltLink> {
@@ -94,7 +107,13 @@ export function prewarmGuestWhatsappLinks(
   if (!event) return;
   if (!origin || !/^https?:\/\//i.test(origin)) return;
   for (const guest of guests) {
-    const key = cacheKeyFor(origin, event.id, guest.id, guest.rsvpToken);
+    const key = cacheKeyFor(
+      origin,
+      event.id,
+      guest.id,
+      guest.rsvpToken,
+      event.invitationImageUrl,
+    );
     if (linkCache.has(key)) continue;
     const promise = new Promise<BuiltLink>((resolve, reject) => {
       queueMicrotask(() => {
@@ -147,7 +166,13 @@ export function useGuestWhatsappLink(
       return;
     }
     let cancelled = false;
-    const key = cacheKeyFor(origin, event.id, guest.id, guest.rsvpToken);
+    const key = cacheKeyFor(
+      origin,
+      event.id,
+      guest.id,
+      guest.rsvpToken,
+      event.invitationImageUrl,
+    );
     let promise = linkCache.get(key);
     if (!promise) {
       promise = new Promise<BuiltLink>((resolve, reject) => {
