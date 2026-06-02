@@ -85,6 +85,38 @@ export interface ResponsePayload {
 //   - The Web Crypto helpers in `./crypto` already do the byte<->base64url
 //     conversion correctly; we delegate to them for consistency.
 
+/**
+ * R160 — guard for the couple's invitation image before it's rendered
+ * on the ANONYMOUS RSVP page. The `?d=` payload is fully craftable by
+ * anyone (rendering doesn't require the HMAC), so without this an
+ * attacker could embed an arbitrary external `<img src>` (IP/tracking
+ * beacon, or unsavory content under the Momentum brand) into a link.
+ * Only allow images served from our own Supabase Storage public path.
+ */
+export function isSafeInvitationImageUrl(url: unknown): url is string {
+  if (typeof url !== "string" || !url) return false;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "https:") return false;
+  // Must be a Supabase Storage *public* object path…
+  if (!u.pathname.startsWith("/storage/v1/object/public/")) return false;
+  const configured = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  // …on our configured project, or any *.supabase.co host as a fallback
+  // (covers preview/branch URLs where the env may differ slightly).
+  if (configured) {
+    try {
+      if (u.origin === new URL(configured).origin) return true;
+    } catch {
+      /* fall through to host check */
+    }
+  }
+  return u.hostname.endsWith(".supabase.co");
+}
+
 const _enc = new TextEncoder();
 const _dec = new TextDecoder();
 

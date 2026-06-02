@@ -522,6 +522,45 @@ export const actions = {
     void mintMissingRsvpTokens();
     return newGuest;
   },
+  /**
+   * R160 — bulk add (Excel/CSV import). Reads + writes the whole AppState
+   * ONCE and mints RSVP tokens ONCE, instead of N×(readState+writeState+
+   * mint) when adding many guests in a loop. Importing a 300–600-guest
+   * list this way is a single serialization + one debounced cloud push,
+   * not hundreds.
+   */
+  addGuests(
+    list: Array<
+      Omit<Guest, "id" | "status" | "attendingCount"> & {
+        attendingCount?: number;
+        status?: Guest["status"];
+      }
+    >,
+  ): Guest[] {
+    const s = readState();
+    const created: Guest[] = list.map((guest) => {
+      const attending = guest.attendingCount ?? 1;
+      return {
+        id: crypto.randomUUID(),
+        name: guest.name,
+        phone: guest.phone,
+        attendingCount: attending,
+        plusOnes: Math.max(0, attending - 1),
+        status: guest.status ?? "pending",
+        side: guest.side,
+        notes: guest.notes,
+        group: guest.group,
+        ageGroup: guest.ageGroup,
+        gender: guest.gender,
+        conflictsWith: guest.conflictsWith,
+        mustSitWith: guest.mustSitWith,
+      };
+    });
+    if (created.length === 0) return [];
+    writeState({ ...s, guests: [...s.guests, ...created] });
+    void mintMissingRsvpTokens();
+    return created;
+  },
   updateGuest(id: string, patch: Partial<Guest>) {
     const s = readState();
     writeState({

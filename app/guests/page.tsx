@@ -164,13 +164,13 @@ function GuestsPageInner() {
   // list, so here we just add each row through the normal addGuest
   // path (which mints RSVP tokens + triggers cloud sync).
   const handleSheetImport = (parsed: Array<{ name: string; phone: string }>) => {
-    let added = 0;
-    for (const r of parsed) {
-      const name = r.name.trim();
-      if (!name) continue;
-      actions.addGuest({ name, phone: r.phone.trim() });
-      added += 1;
-    }
+    const clean = parsed
+      .map((r) => ({ name: r.name.trim(), phone: r.phone.trim() }))
+      .filter((r) => r.name);
+    // R160 — single batched write (one serialization + one cloud push)
+    // instead of N× addGuest, so importing a large list never janks.
+    actions.addGuests(clean);
+    const added = clean.length;
     setShowImportSheet(false);
     showToast(
       added > 0 ? `✓ יובאו ${added} מוזמנים מהקובץ` : "לא נוספו מוזמנים",

@@ -92,8 +92,10 @@ function CallbackInner() {
         return;
       }
 
-      // 3. Confirm we now have a session. supabase-js auto-detects the auth code in the URL
-      //    (because `detectSessionInUrl: true` in createClient).
+      // 3. Get the client, then (3a below) exchange the code ourselves.
+      //    NOTE: `detectSessionInUrl` is OFF (lib/supabase.ts, R145), so
+      //    supabase-js does NOT auto-process the URL — the manual
+      //    exchangeCodeForSession call below owns the whole flow.
       const supabase = getSupabase();
       if (!supabase) {
         if (cancelled) return;

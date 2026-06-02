@@ -49,26 +49,38 @@ const RATE_LIMIT_MS = 5_000;
  * setItem failure would silently lose the rate-limit stamp and the same
  * import URL could be replayed dozens of times in a row.
  */
-let lastImportMemo = 0;
+// R160 — the rate limiter is PER-RESPONSE, not global. It exists to stop
+// the SAME import link being replayed (refresh / StrictMode double-run),
+// NOT to throttle a host who imports several different guests' RSVPs in
+// quick succession. The previous single global key dropped the 2nd
+// guest's RSVP when two links were opened within 5s — silent data loss
+// exactly in the common "process a batch of replies" flow.
+const lastImportMemo = new Map<string, number>();
 
-function readLastImport(): number {
-  if (typeof window === "undefined") return lastImportMemo;
+/** Stable identity for one RSVP response — event+guest+status+count. */
+function responseKey(p: { eid: string; gid: string; s: string; c: number }): string {
+  return `${p.eid}:${p.gid}:${p.s}:${p.c}`;
+}
+
+function readLastImport(key: string): number {
+  const storageKey = `${RATE_LIMIT_KEY}:${key}`;
+  if (typeof window === "undefined") return lastImportMemo.get(key) ?? 0;
   try {
-    const fromStorage = Number(window.sessionStorage.getItem(RATE_LIMIT_KEY) || 0);
+    const fromStorage = Number(window.sessionStorage.getItem(storageKey) || 0);
     if (fromStorage) return fromStorage;
   } catch {
     // sessionStorage unavailable — fall back to module memo below.
   }
-  return lastImportMemo;
+  return lastImportMemo.get(key) ?? 0;
 }
 
-function stampLastImport(now: number) {
+function stampLastImport(key: string, now: number) {
   // Memo first so a sessionStorage failure still rate-limits within the same
   // tab session.
-  lastImportMemo = now;
+  lastImportMemo.set(key, now);
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(RATE_LIMIT_KEY, String(now));
+    window.sessionStorage.setItem(`${RATE_LIMIT_KEY}:${key}`, String(now));
   } catch {
     // Disk full / private mode — already covered by lastImportMemo.
   }
@@ -93,7 +105,7 @@ function preValidate(args: {
   if (!args.state.event.signingKey) return "missing-key";
   if (!args.hasSignature) return "bad-signature";
   if (typeof window !== "undefined") {
-    const last = readLastImport();
+    const last = readLastImport(responseKey(args.payload));
     if (last && Date.now() - last < RATE_LIMIT_MS) return "rate-limited";
   }
   return { kind: "needs-verify", status: args.payload.s as ValidRsvpStatus };
@@ -159,7 +171,8 @@ function InboxInner() {
       }
       // Stamp rate limiter only AFTER signature passes — failed attempts
       // shouldn't lock out the legitimate guest who tries again seconds later.
-      stampLastImport(Date.now());
+      // Keyed per-response so importing a DIFFERENT guest right after is fine.
+      stampLastImport(responseKey(payload!), Date.now());
 
       // SECURITY: lookup by id ONLY. A name-based fallback lets a guest with
       // a duplicate name overwrite someone else's RSVP. If we can't find the

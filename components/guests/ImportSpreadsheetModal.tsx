@@ -125,7 +125,12 @@ export function ImportSpreadsheetModal({
       const hasHeader = nameCol >= 0 || phoneCol >= 0;
       const body = hasHeader ? data.slice(1) : data;
 
-      const colCount = Math.max(...data.map((r) => r.length), 1);
+      // Reduce (not Math.max(...spread)) — a spread of thousands of args
+      // can throw RangeError on large files. Cap the scan width too.
+      const colCount = Math.min(
+        64,
+        data.reduce((m, r) => Math.max(m, r.length), 1),
+      );
       if (phoneCol < 0) {
         // Pick the column with the most phone-like values.
         let best = -1;

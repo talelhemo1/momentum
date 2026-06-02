@@ -20,6 +20,7 @@ import { formatEventDate } from "@/lib/format";
 import {
   decodeInvitation,
   buildGuestResponseWhatsappLink,
+  isSafeInvitationImageUrl,
   type InvitationPayload,
 } from "@/lib/invitation";
 import {
@@ -351,7 +352,11 @@ function RsvpInner() {
           city={resolved.city}
           synagogue={resolved.synagogue}
           guestName={resolved.guest.name}
-          invitationImageUrl={resolved.invitationImageUrl}
+          invitationImageUrl={
+            isSafeInvitationImageUrl(resolved.invitationImageUrl)
+              ? resolved.invitationImageUrl
+              : undefined
+          }
         />
 
         {venueText && navLinks && (
