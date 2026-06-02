@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { isFounderEmail } from "@/lib/constants";
+import { useUser, userActions } from "@/lib/user";
 import { Logo } from "@/components/Logo";
 import { EmptyState } from "@/components/EmptyState";
 import { VendorControlPanel } from "@/components/admin/VendorControlPanel";
@@ -68,8 +69,16 @@ interface AdminStats {
 
 export default function AdminDashboardPage() {
   const router = useRouter();
+  // R161c — the app's persisted user (localStorage) survives even when the
+  // Supabase session can't be read, so it's the reliable signal for "is
+  // this the founder". identifier holds the email for Google/Apple.
+  const { user: appUser, hydrated: userHydrated } = useUser();
   const [authChecked, setAuthChecked] = useState(false);
   const [authorized, setAuthorized] = useState(false);
+  // R161c — founder is recognized but the Supabase session is gone/expired:
+  // show a clear re-login card instead of bouncing to /signup (which looped
+  // because the app still considers them signed in).
+  const [needsReauth, setNeedsReauth] = useState(false);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +126,11 @@ export default function AdminDashboardPage() {
     }, 10000);
 
     void (async () => {
+      // Wait until the persisted app user is known before judging auth —
+      // otherwise the founder could be briefly misclassified as
+      // unauthenticated on the first render. The effect re-runs when
+      // `userHydrated` flips (it's in the deps).
+      if (!userHydrated) return;
       try {
         const supabase = getSupabase();
         if (!supabase) {
@@ -124,32 +138,42 @@ export default function AdminDashboardPage() {
           return;
         }
 
-        // R161 — gate on getSession() (local-first, auto-refreshing),
-        // NOT getUser(). getUser() is a network round-trip that returns
-        // null whenever the access token needs a refresh or the network
-        // hiccups (worse under Safari ITP), which bounced the founder to
-        // /signup — "can't get into admin". getSession() gives the email
-        // AND the access token in one local call, with no inconsistency
-        // window between the two. The client gate is UX only; the real
-        // security is server-side requireAdmin (still verifies the JWT).
+        // R161/R161c — gate on getSession() (local-first, auto-refreshing),
+        // NOT getUser() (a network round-trip that returns null whenever the
+        // token needs a refresh / the network hiccups — worse under Safari
+        // ITP). Founder identity is taken from the SESSION email OR the
+        // app's persisted user (which survives a missing Supabase session),
+        // so the founder is never misclassified as "not authorized" just
+        // because the session momentarily can't be read. This is UX only;
+        // the real security is server-side requireAdmin (verifies the JWT).
         const { data: { session } } = await supabase.auth.getSession();
-        const sessionEmail = session?.user?.email;
-        if (!sessionEmail || !session?.access_token) {
-          router.replace("/signup?returnTo=/admin/dashboard");
+        const sessionEmail = session?.user?.email?.toLowerCase().trim();
+        const appEmail = appUser?.identifier?.toLowerCase().trim();
+        const founder =
+          (!!sessionEmail && isFounderEmail(sessionEmail)) ||
+          (!!appEmail && isFounderEmail(appEmail));
+
+        // Surface whichever email we know for the screens below.
+        setSignedInEmail(sessionEmail ?? appEmail ?? null);
+
+        if (!founder) {
+          // No identity at all (and the app user has finished hydrating)
+          // → send to sign-in. Otherwise fall through to the "not
+          // authorized" screen (authorized stays false).
+          if (userHydrated && !sessionEmail && !appEmail) {
+            router.replace("/signup?returnTo=/admin/dashboard");
+          }
           return;
         }
-        // Surface the email up front so the "not authorized" view can
-        // show it.
-        const userEmail = sessionEmail.toLowerCase().trim();
-        setSignedInEmail(userEmail);
 
-        // R131 — FOUNDER-ONLY. Owner asked for /admin to be locked to
-        // talhemo132@gmail.com. The admin_emails fallback was removed
-        // here AND in lib/admin/server.ts so the UI gate matches the
-        // API gate. Anyone else who lands on this page sees the
-        // "not authorized" empty state below; isAuthorized stays
-        // false and the dashboard JSX never renders.
-        if (!isFounderEmail(userEmail)) return;
+        // Founder confirmed. The admin API needs a live access token; if
+        // the Supabase session is gone, show the re-login card (R161c)
+        // instead of an endless /signup bounce.
+        if (!session?.access_token) {
+          setNeedsReauth(true);
+          return;
+        }
+
         setAuthorized(true);
         setAdminToken(session.access_token);
 
@@ -190,7 +214,9 @@ export default function AdminDashboardPage() {
       window.clearTimeout(hardTimeout);
       controller.abort();
     };
-  }, [router]);
+    // Re-run once the app user hydrates from localStorage so the founder
+    // is recognized even when the Supabase session is unreadable.
+  }, [router, appUser?.identifier, userHydrated]);
 
   // R131 — projectedRevenue card removed. Owner asked to keep the
   // section visible but show ₪0 until real payments come through.
@@ -204,6 +230,47 @@ export default function AdminDashboardPage() {
     return (
       <main className="min-h-screen flex items-center justify-center">
         <Loader2 className="animate-spin text-[--accent]" size={32} aria-hidden />
+      </main>
+    );
+  }
+
+  // R161c — founder recognized, but no live Supabase session. Offer a
+  // one-click fresh sign-in instead of a confusing /signup bounce or the
+  // misleading "not authorized" screen.
+  if (needsReauth) {
+    return (
+      <main className="min-h-screen flex items-center justify-center px-5">
+        <div className="card p-8 text-center max-w-md">
+          <ShieldCheck
+            size={32}
+            className="mx-auto"
+            style={{ color: "var(--accent)" }}
+            aria-hidden
+          />
+          <h1 className="mt-4 text-xl font-bold">ההתחברות פגה</h1>
+          <p
+            className="mt-3 text-sm leading-relaxed"
+            style={{ color: "var(--foreground-soft)" }}
+          >
+            זוהית כמנהל, אבל החיבור המאובטח פג תוקף. התחבר מחדש כדי לטעון
+            את לוח הבקרה.
+          </p>
+          <button
+            onClick={() => {
+              void userActions.signInWithOAuth("google");
+            }}
+            className="btn-gold mt-6 inline-flex items-center justify-center gap-2 w-full"
+          >
+            התחבר מחדש עם Google
+          </button>
+          <Link
+            href="/dashboard"
+            className="text-xs underline mt-5 inline-block"
+            style={{ color: "var(--foreground-muted)" }}
+          >
+            חזרה לאפליקציה
+          </Link>
+        </div>
       </main>
     );
   }
