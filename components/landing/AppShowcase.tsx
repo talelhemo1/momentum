@@ -1,16 +1,65 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useState, type ComponentType } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+  PhoneFrame,
+  DashboardScreen,
+  GuestsScreen,
+  RsvpScreen,
+  BudgetScreen,
+  SeatingScreen,
+  VendorsScreen,
+  BalanceScreen,
+  LiveScreen,
+} from "./screens";
 
 /**
- * R48 — "see how it looks". Three CSS-only phone mockups (dashboard /
- * guests / Momentum-Live), a notch, a gold edge-reflection and a soft
- * dotted-gold backdrop. Six callouts with a subtle SVG connector motif.
- *
- * Server component, no assets, no client JS. The three screens sit in a
- * responsive row (carousel-like: focal screen centered & raised on
- * desktop, stacked on mobile) rather than a JS carousel — keeps it
- * zero-JS and robust at every width.
+ * R158 — the cinematic screen reel. A single focal phone auto-cycles
+ * through every page in the product "like a film", flanked by two
+ * blurred depth-phones (prev / next) for a cover-flow stage. A
+ * film-strip timeline below telegraphs the dwell and lets the visitor
+ * jump to any screen; auto-play pauses on hover / focus and is fully
+ * static under prefers-reduced-motion. Almost no copy — the screens
+ * carry it.
  */
+
+const SCREENS: Array<{ label: string; nav: number; Screen: ComponentType }> = [
+  { label: "דשבורד", nav: 0, Screen: DashboardScreen },
+  { label: "ניהול מוזמנים", nav: 1, Screen: GuestsScreen },
+  { label: "אישורי הגעה", nav: 1, Screen: RsvpScreen },
+  { label: "תקציב חי", nav: 2, Screen: BudgetScreen },
+  { label: "סידור הושבה", nav: 2, Screen: SeatingScreen },
+  { label: "ספקים מאומתים", nav: 2, Screen: VendorsScreen },
+  { label: "מאזן מעטפות", nav: 2, Screen: BalanceScreen },
+  { label: "יום האירוע — Live", nav: 3, Screen: LiveScreen },
+];
+
+const N = SCREENS.length;
+const DWELL = 3000;
+const EASE = [0.22, 1, 0.36, 1] as const;
+const STAGE_H = 392;
+
+const mod = (i: number) => ((i % N) + N) % N;
+
 export function AppShowcase() {
+  const reduce = useReducedMotion();
+  const [active, setActive] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  // Auto-advance — the "film". Restarts on manual jump; halts while the
+  // visitor hovers / focuses the stage, and is disabled under
+  // reduced-motion.
+  useEffect(() => {
+    if (reduce || paused) return;
+    const id = window.setTimeout(() => setActive((a) => mod(a + 1)), DWELL);
+    return () => window.clearTimeout(id);
+  }, [active, paused, reduce]);
+
+  const Active = SCREENS[active].Screen;
+  const Prev = SCREENS[mod(active - 1)].Screen;
+  const Next = SCREENS[mod(active + 1)].Screen;
+
   return (
     <section id="showcase" className="py-24 md:py-32 relative overflow-hidden">
       {/* dotted-gold backdrop */}
@@ -22,8 +71,12 @@ export function AppShowcase() {
             "radial-gradient(circle, rgba(212,176,104,0.10) 1px, transparent 1px)",
           backgroundSize: "22px 22px",
           maskImage:
-            "radial-gradient(ellipse 70% 60% at 50% 45%, #000 30%, transparent 75%)",
+            "radial-gradient(ellipse 75% 60% at 50% 40%, #000 30%, transparent 78%)",
         }}
+      />
+      <div
+        aria-hidden
+        className="glow-orb glow-orb-gold w-[680px] h-[680px] top-24 left-1/2 -translate-x-1/2 opacity-25"
       />
 
       <div className="max-w-6xl mx-auto px-5 sm:px-8 relative z-10">
@@ -32,318 +85,196 @@ export function AppShowcase() {
             className="font-bold gradient-text"
             style={{ fontSize: "clamp(2rem, 6vw, 3rem)" }}
           >
-            תראו איך זה נראה
+            הצצה לכל פינה באפליקציה
           </h2>
           <p className="mt-3 text-lg" style={{ color: "var(--foreground-soft)" }}>
-            שלושה מסכים. תכנון, אורחים, ויום האירוע — במקום אחד.
+            כל מסך אמיתי — רץ לבד, כמו סרט.
           </p>
         </div>
 
-        <div className="mt-16 grid gap-10 lg:grid-cols-3 items-center justify-items-center">
-          <Phone label="דשבורד">
-            <DashboardScreen />
-          </Phone>
-          <Phone focal label="רשימת מוזמנים">
-            <GuestsScreen />
-          </Phone>
-          <Phone label="Momentum Live">
-            <LiveScreen />
-          </Phone>
+        {/* animated label + counter */}
+        <div className="mt-10 h-9 flex items-center justify-center gap-3">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={active}
+              className="text-lg font-bold gradient-gold"
+              initial={reduce ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+            >
+              {SCREENS[active].label}
+            </motion.span>
+          </AnimatePresence>
+          <span
+            className="text-xs ltr-num tabular-nums px-2 py-0.5 rounded-full"
+            style={{
+              color: "var(--foreground-muted)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            {active + 1} / {N}
+          </span>
         </div>
 
-        {/* Six callouts with a connector motif. */}
-        <div className="mt-16 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 max-w-4xl mx-auto">
-          <Callout>ספירה לאחור חיה</Callout>
-          <Callout>תקציב שמתעדכן לבד</Callout>
-          <Callout>AI שמתריע על חריגה</Callout>
-          <Callout>אישורי הגעה ב-WhatsApp ובשיחה</Callout>
-          <Callout>שליחת מספרי שולחן לאורחים</Callout>
-          <Callout>צ׳ק-אין אורחים בלחיצה</Callout>
+        {/* ── Stage ───────────────────────────────────────────────── */}
+        <div
+          className="mt-6 relative flex items-center justify-center"
+          style={{ minHeight: STAGE_H + 96 }}
+          onPointerEnter={() => setPaused(true)}
+          onPointerLeave={() => setPaused(false)}
+          onFocusCapture={() => setPaused(true)}
+          onBlurCapture={() => setPaused(false)}
+          role="group"
+          aria-roledescription="קרוסלת מסכים"
+          aria-label="תצוגת מסכי האפליקציה"
+        >
+          {/* depth phone — leading side (next) */}
+          <DepthPhone side="lead" index={active} reduce={!!reduce}>
+            <Next />
+          </DepthPhone>
+          {/* depth phone — trailing side (prev) */}
+          <DepthPhone side="trail" index={active} reduce={!!reduce}>
+            <Prev />
+          </DepthPhone>
+
+          {/* focal phone — content cross-slides like a reel */}
+          <div className="relative z-10 w-[270px] sm:w-[284px]">
+            <PhoneFrame glow="strong" activeNav={SCREENS[active].nav}>
+              <div className="relative" style={{ height: STAGE_H }}>
+                <AnimatePresence initial={false}>
+                  <motion.div
+                    key={active}
+                    className="absolute inset-0"
+                    initial={reduce ? false : { opacity: 0, x: 56 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={reduce ? { opacity: 0 } : { opacity: 0, x: -56 }}
+                    transition={{ duration: 0.55, ease: EASE }}
+                  >
+                    <Active />
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </PhoneFrame>
+          </div>
+        </div>
+
+        {/* ── Film-strip timeline ─────────────────────────────────── */}
+        <div className="mt-10 flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap max-w-2xl mx-auto">
+          {SCREENS.map((s, i) => {
+            const isActive = i === active;
+            return (
+              <button
+                key={s.label}
+                type="button"
+                onClick={() => setActive(i)}
+                aria-label={`עבור ל${s.label}`}
+                aria-current={isActive ? "true" : undefined}
+                className="group relative h-1.5 rounded-full transition-all duration-300"
+                style={{
+                  width: isActive ? 44 : 22,
+                  background: isActive ? "var(--border)" : "var(--border)",
+                  opacity: isActive ? 1 : 0.5,
+                }}
+              >
+                {isActive && (
+                  <motion.span
+                    key={`${active}-${paused}`}
+                    className="absolute inset-0 rounded-full origin-right"
+                    style={{
+                      background:
+                        "linear-gradient(90deg, var(--gold-100), var(--gold-500))",
+                    }}
+                    initial={{ scaleX: reduce || paused ? 1 : 0 }}
+                    animate={{ scaleX: 1 }}
+                    transition={{
+                      duration: reduce || paused ? 0 : DWELL / 1000,
+                      ease: "linear",
+                    }}
+                  />
+                )}
+                {!isActive && (
+                  <span
+                    className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{
+                      background:
+                        "color-mix(in srgb, var(--accent) 40%, transparent)",
+                    }}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* slim value strip */}
+        <div
+          className="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm px-5"
+          style={{ color: "var(--foreground-muted)" }}
+        >
+          <span>✓ הכל מסתנכרן בזמן אמת</span>
+          <span>✓ עובד מהדפדפן — בלי הורדה</span>
+          <span>✓ בעברית מלאה, מימין לשמאל</span>
         </div>
       </div>
     </section>
   );
 }
 
-/* ── Phone shell ──────────────────────────────────────────────────── */
-function Phone({
+/**
+ * Decorative depth phone behind the focal one. Pushed to a side,
+ * scaled down, blurred and dimmed for a cover-flow stage. Its content
+ * crossfades as the reel advances. Hidden below lg (mobile shows only
+ * the focal phone). aria-hidden — purely atmospheric.
+ */
+function DepthPhone({
+  side,
+  index,
+  reduce,
   children,
-  label,
-  focal = false,
 }: {
-  children: ReactNode;
-  label: string;
-  focal?: boolean;
+  side: "lead" | "trail";
+  index: number;
+  reduce: boolean;
+  children: React.ReactNode;
 }) {
+  // RTL stage: "lead" sits on the left, "trail" on the right.
+  const x = side === "lead" ? "-58%" : "58%";
   return (
     <div
-      className={`relative ${focal ? "lg:scale-[1.06] lg:-translate-y-2" : "lg:opacity-95"}`}
-    >
-      <div
-        className="relative mx-auto rounded-[2.75rem] p-3"
-        style={{
-          width: 286,
-          background: "linear-gradient(180deg,#1A1410,#07060A)",
-          border: "1px solid var(--border-gold)",
-          boxShadow: focal
-            ? "0 50px 110px -30px var(--accent-glow)"
-            : "0 36px 80px -34px var(--accent-glow)",
-        }}
-      >
-        {/* gold edge-reflection */}
-        <div
-          aria-hidden
-          className="absolute inset-0 rounded-[2.75rem] pointer-events-none"
-          style={{
-            background:
-              "linear-gradient(135deg, rgba(244,222,169,0.18), transparent 35%, transparent 70%, rgba(244,222,169,0.10))",
-          }}
-        />
-        {/* notch */}
-        <div
-          aria-hidden
-          className="absolute top-3 left-1/2 -translate-x-1/2 w-28 h-5 rounded-b-2xl z-10"
-          style={{ background: "#07060A" }}
-        />
-        <div
-          className="relative rounded-[2.1rem] overflow-hidden"
-          style={{ background: "#0A0A0B", border: "1px solid var(--border)" }}
-        >
-          {children}
-          {/* bottom nav */}
-          <div
-            className="flex items-center justify-around px-5 py-3"
-            style={{
-              borderTop: "1px solid var(--border)",
-              background: "var(--input-bg)",
-            }}
-            aria-hidden
-          >
-            {["●", "○", "○", "○"].map((d, i) => (
-              <span
-                key={i}
-                className="text-[10px]"
-                style={{
-                  color: i === 0 ? "var(--accent)" : "var(--foreground-muted)",
-                }}
-              >
-                {d}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div
-        className="mt-4 text-center text-xs font-semibold"
-        style={{ color: "var(--foreground-muted)" }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}
-
-/* ── Screen 1 — Dashboard ─────────────────────────────────────────── */
-function DashboardScreen() {
-  return (
-    <div className="pt-8">
-      <div
-        className="px-4 pb-5 text-center"
-        style={{
-          background:
-            "radial-gradient(120% 70% at 50% -10%, rgba(212,176,104,0.22), transparent 60%)",
-        }}
-      >
-        <div
-          className="text-[10px] uppercase tracking-[0.2em]"
-          style={{ color: "var(--foreground-muted)" }}
-        >
-          💍 חתונה
-        </div>
-        <div className="mt-1 text-lg font-extrabold gradient-gold">
-          דנה &amp; יואב
-        </div>
-        <div className="mt-3 text-5xl font-extrabold gradient-gold ltr-num leading-none">
-          72
-        </div>
-        <div className="text-[10px]" style={{ color: "var(--foreground-soft)" }}>
-          ימים לאירוע
-        </div>
-      </div>
-      <div className="p-3 space-y-2">
-        {[
-          ["✓ אישרו הגעה", "142 / 200"],
-          ["💰 תקציב", "₪148K · 72%"],
-          ["⚡ AI", "חריגה בעוד 12 ימים"],
-          ["📅 הבא בתור", "טעימות קייטרינג"],
-        ].map(([a, b]) => (
-          <Row key={a} a={a} b={b} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── Screen 2 — Guests ────────────────────────────────────────────── */
-function GuestsScreen() {
-  const guests: Array<[string, string, string]> = [
-    ["נועה לוי", "אישרה · 2", "var(--accent)"],
-    ["איתי כהן", "אישר · 4", "var(--accent)"],
-    ["שיר אזולאי", "טנטטיב", "var(--foreground-muted)"],
-    ["רון מזרחי", "לא מגיע", "var(--foreground-muted)"],
-    ["מאיה פרץ", "אישרה · 1", "var(--accent)"],
-  ];
-  return (
-    <div className="pt-9 px-3 pb-1">
-      <div
-        className="rounded-xl px-3 py-2 text-[11px] mb-2"
-        style={{
-          background: "var(--input-bg)",
-          border: "1px solid var(--border)",
-          color: "var(--foreground-muted)",
-        }}
-      >
-        🔍 חיפוש מוזמן…
-      </div>
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {["כולם", "אישרו", "לא", "נשלח"].map((c, i) => (
-          <span
-            key={c}
-            className="text-[10px] rounded-full px-2.5 py-1"
-            style={{
-              background:
-                i === 0
-                  ? "color-mix(in srgb, var(--gold-100) 16%, transparent)"
-                  : "var(--input-bg)",
-              border: `1px solid ${i === 0 ? "var(--border-gold)" : "var(--border)"}`,
-              color: i === 0 ? "var(--accent)" : "var(--foreground-muted)",
-            }}
-          >
-            {c}
-          </span>
-        ))}
-      </div>
-      <div className="space-y-1.5">
-        {guests.map(([name, status, color]) => (
-          <div
-            key={name}
-            className="rounded-xl px-3 py-2 flex items-center gap-2.5"
-            style={{
-              background: "var(--input-bg)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div
-              className="w-6 h-6 rounded-full shrink-0"
-              style={{
-                background:
-                  "linear-gradient(135deg, var(--gold-100), var(--gold-500))",
-              }}
-              aria-hidden
-            />
-            <span className="text-[11px] font-semibold flex-1 truncate">
-              {name}
-            </span>
-            <span className="text-[10px] ltr-num" style={{ color }}>
-              {status}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── Screen 3 — Momentum Live ─────────────────────────────────────── */
-function LiveScreen() {
-  const alerts: Array<[string, string]> = [
-    ["🟢", "רחבת ריקודים מוכנה"],
-    ["🟠", "קייטרינג מאחר ב-15 דק׳"],
-    ["🔴", "שולחן 7 — אורח לא הגיע"],
-  ];
-  return (
-    <div className="pt-9 px-3 pb-1">
-      <div
-        className="rounded-xl p-3 text-center mb-2"
-        style={{
-          background:
-            "radial-gradient(120% 80% at 50% 0%, rgba(212,176,104,0.18), transparent 60%)",
-          border: "1px solid var(--border-gold)",
-        }}
-      >
-        <div className="text-2xl" aria-hidden>
-          💓
-        </div>
-        <div
-          className="text-[10px] mt-1"
-          style={{ color: "var(--foreground-soft)" }}
-        >
-          האירוע חי · 19:42
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        {alerts.map(([dot, text]) => (
-          <div
-            key={text}
-            className="rounded-xl px-3 py-2 flex items-center gap-2 text-[11px]"
-            style={{
-              background: "var(--input-bg)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <span aria-hidden>{dot}</span>
-            <span style={{ color: "var(--foreground-soft)" }}>{text}</span>
-          </div>
-        ))}
-      </div>
-      <div
-        className="mt-2 rounded-xl py-2.5 text-center text-[11px] font-bold"
-        style={{
-          background:
-            "linear-gradient(135deg, var(--gold-100), var(--gold-500))",
-          color: "var(--gold-button-text)",
-        }}
-      >
-        ✓ צ׳ק-אין אורחים בלחיצה
-      </div>
-    </div>
-  );
-}
-
-function Row({ a, b }: { a: string; b: string }) {
-  return (
-    <div
-      className="rounded-xl px-3 py-2 flex items-center justify-between text-[11px]"
-      style={{ background: "var(--input-bg)", border: "1px solid var(--border)" }}
-    >
-      <span style={{ color: "var(--foreground-soft)" }}>{a}</span>
-      <span className="font-bold ltr-num">{b}</span>
-    </div>
-  );
-}
-
-function Callout({ children }: { children: ReactNode }) {
-  return (
-    <div
-      className="inline-flex items-center gap-2.5 rounded-full px-4 py-2.5 text-sm font-semibold"
+      aria-hidden
+      className="hidden lg:block absolute top-1/2 z-0 w-[230px] pointer-events-none"
       style={{
-        background: "rgba(212,176,104,0.10)",
-        border: "1px solid var(--border-gold)",
-        color: "var(--accent)",
+        left: "50%",
+        transform: `translate(-50%, -50%) translateX(${x}) scale(0.82)`,
+        filter: "blur(2px)",
+        opacity: 0.45,
+        WebkitMaskImage:
+          side === "lead"
+            ? "linear-gradient(90deg, transparent, #000 70%)"
+            : "linear-gradient(270deg, transparent, #000 70%)",
+        maskImage:
+          side === "lead"
+            ? "linear-gradient(90deg, transparent, #000 70%)"
+            : "linear-gradient(270deg, transparent, #000 70%)",
       }}
     >
-      {/* subtle SVG connector motif */}
-      <svg width="18" height="10" viewBox="0 0 18 10" aria-hidden className="shrink-0">
-        <path
-          d="M1 5 H11"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          opacity="0.5"
-        />
-        <circle cx="15" cy="5" r="2.5" fill="currentColor" />
-      </svg>
-      {children}
+      <PhoneFrame width={230} showNav={false}>
+        <div className="relative" style={{ height: STAGE_H }}>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={index}
+              className="absolute inset-0"
+              initial={reduce ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </PhoneFrame>
     </div>
   );
 }

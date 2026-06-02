@@ -131,7 +131,7 @@ export function Hero() {
               background: "var(--surface-2)",
             }}
           >
-            כניסה לזוגות
+            כניסה
           </Link>
           <span
             className="text-xs"

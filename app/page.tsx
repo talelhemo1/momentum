@@ -3,11 +3,13 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { RedirectIfSignedIn } from "@/components/landing/RedirectIfSignedIn";
 import { Hero } from "@/components/landing/Hero";
+import { HowItWorks } from "@/components/landing/HowItWorks";
 import { FeatureGrid } from "@/components/landing/FeatureGrid";
 import { AppShowcase } from "@/components/landing/AppShowcase";
 import { TrustSection } from "@/components/landing/TrustSection";
 import { FAQ } from "@/components/landing/FAQ";
 import { FinalCTA } from "@/components/landing/FinalCTA";
+import { LegalStrip } from "@/components/landing/LegalStrip";
 
 /**
  * R62 (R52) — pre-paint redirect to /dashboard for signed-in users.
@@ -121,11 +123,13 @@ export default async function LandingPage() {
       <Header />
       <main className="flex-1 relative">
         <Hero />
-        <FeatureGrid />
+        <HowItWorks />
         <AppShowcase />
+        <FeatureGrid />
         <TrustSection />
         <FAQ />
         <FinalCTA />
+        <LegalStrip />
       </main>
       <Footer />
     </>
