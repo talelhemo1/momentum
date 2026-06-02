@@ -18,10 +18,10 @@ const TAB_KEY = "momentum.calc.tab.v1";
 // this rev — see git history if you need to bring them back.
 type TabId = "real-cost" | "alcohol" | "envelope";
 
-const TABS: Array<{ id: TabId; label: string; emoji: string }> = [
-  { id: "real-cost", label: "כמה אורח עולה", emoji: "💎" },
-  { id: "alcohol", label: "אלכוהול", emoji: "🍷" },
-  { id: "envelope", label: "מעטפה", emoji: "💌" },
+const TABS: Array<{ id: TabId; label: string; emoji: string; desc: string }> = [
+  { id: "real-cost", label: "כמה אורח עולה", emoji: "💎", desc: "העלות האמיתית לאורח — כולל תקורה" },
+  { id: "alcohol", label: "אלכוהול", emoji: "🍷", desc: "כמה יין, וודקה ובירה להזמין" },
+  { id: "envelope", label: "מעטפה", emoji: "💌", desc: "כמה מעטפה מכסה את העלות" },
 ];
 
 const TIPS: Record<TabId, string> = {
@@ -109,12 +109,14 @@ export function CalculatorsHub({ state }: { state: AppState }) {
         </div>
       </div>
 
-      {/* Pills */}
+      {/* R163 — selector CARDS (was small pills). Each tool now shows a
+          one-line description so it's obvious at a glance what it does,
+          and the active one is highlighted in gold. Clearer + prettier,
+          same a11y (role=tab + arrow-key roving + scroll-into-view). */}
       <div
         role="tablist"
         aria-label="מחשבונים"
-        className="mt-7 flex md:justify-center gap-2 overflow-x-auto pb-2 -mx-1 px-1"
-        style={{ scrollSnapType: "x proximity", scrollPaddingInline: "50%" }}
+        className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-3"
       >
         {TABS.map((t, idx) => {
           const on = active === t.id;
@@ -131,41 +133,45 @@ export function CalculatorsHub({ state }: { state: AppState }) {
               tabIndex={on ? 0 : -1}
               onClick={() => selectTab(t.id)}
               onKeyDown={(e) => onKeyNav(e, idx)}
-              className="shrink-0 inline-flex items-center gap-1.5 rounded-full text-sm font-semibold transition-all duration-300"
+              className="text-start rounded-2xl p-3.5 flex items-center gap-3 transition-all duration-300 hover:-translate-y-0.5"
               style={{
-                scrollSnapAlign: "center",
-                minHeight: 44,
-                padding: "0 18px",
-                ...(on
-                  ? {
-                      background:
-                        "linear-gradient(135deg, #F4DEA9, #A8884A)",
-                      color: "#1A1310",
-                      boxShadow: "0 4px 16px -4px rgba(212,176,104,0.6)",
-                    }
-                  : {
-                      background: "var(--surface-2)",
-                      color: "var(--foreground-soft)",
-                      border: "1px solid var(--border)",
-                    }),
+                border: on ? "1px solid var(--border-gold)" : "1px solid var(--border)",
+                background: on
+                  ? "linear-gradient(135deg, rgba(244,222,169,0.14), rgba(168,136,74,0.05))"
+                  : "var(--surface-2)",
+                boxShadow: on ? "0 12px 32px -18px var(--accent-glow)" : "none",
               }}
             >
-              <span aria-hidden>{t.emoji}</span>
-              {t.label}
+              <span
+                className="shrink-0 w-11 h-11 rounded-xl inline-flex items-center justify-center text-2xl"
+                style={{
+                  background: on
+                    ? "linear-gradient(160deg, rgba(244,222,169,0.22), rgba(168,136,74,0.08))"
+                    : "var(--input-bg)",
+                  border: `1px solid ${on ? "var(--border-gold)" : "var(--border)"}`,
+                }}
+                aria-hidden
+              >
+                {t.emoji}
+              </span>
+              <span className="min-w-0">
+                <span
+                  className="block font-bold text-sm leading-tight"
+                  style={{ color: on ? "var(--accent)" : "var(--foreground)" }}
+                >
+                  {t.label}
+                </span>
+                <span
+                  className="block text-[11px] mt-0.5 leading-snug"
+                  style={{ color: "var(--foreground-muted)" }}
+                >
+                  {t.desc}
+                </span>
+              </span>
             </button>
           );
         })}
       </div>
-
-      {/* Gold divider */}
-      <div
-        aria-hidden
-        className="mt-1 h-px"
-        style={{
-          background:
-            "linear-gradient(90deg, transparent, var(--border-gold), transparent)",
-        }}
-      />
 
       {/* Panel — fades in on every tab switch */}
       <div

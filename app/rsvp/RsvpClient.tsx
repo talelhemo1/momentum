@@ -39,6 +39,43 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
+// R163 — remember a guest's response on THIS device so re-opening the
+// link shows what they already chose instead of a fresh, re-submittable
+// picker (the owner reported guests confirming over and over). Keyed by
+// event+guest. The cloud upsert is idempotent anyway, but this makes the
+// "you've already replied" state explicit and prevents accidental
+// repeat submissions; the guest can still tap "change" to update.
+const RSVP_SENT_PREFIX = "momentum.rsvp.sent.v1";
+interface PersistedRsvp {
+  status: "confirmed" | "declined" | "maybe";
+  count: number;
+}
+function rsvpSentKey(eventId: string, guestId: string): string {
+  return `${RSVP_SENT_PREFIX}:${eventId}:${guestId}`;
+}
+function readPersistedRsvp(eventId: string, guestId: string): PersistedRsvp | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(rsvpSentKey(eventId, guestId));
+    if (!raw) return null;
+    const p = JSON.parse(raw) as PersistedRsvp;
+    if (p && (p.status === "confirmed" || p.status === "declined" || p.status === "maybe")) {
+      return { status: p.status, count: typeof p.count === "number" ? p.count : 0 };
+    }
+  } catch {
+    /* corrupt entry — ignore */
+  }
+  return null;
+}
+function writePersistedRsvp(eventId: string, guestId: string, value: PersistedRsvp): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(rsvpSentKey(eventId, guestId), JSON.stringify(value));
+  } catch {
+    /* private mode / quota — non-fatal */
+  }
+}
+
 export default function RsvpClient() {
   return (
     <Suspense fallback={null}>
@@ -157,6 +194,24 @@ function RsvpInner() {
     }
     return null;
   }, [tokenOk, tokenQuery, payload, state.event, state.guests]);
+
+  // R163 — restore a prior response saved on THIS device, so a returning
+  // guest sees "you already replied" instead of a fresh picker they could
+  // submit again. queueMicrotask keeps the setState out of the synchronous
+  // effect body (react-hooks/set-state-in-effect).
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (!resolved || restoredRef.current) return;
+    const persisted = readPersistedRsvp(resolved.eventId, resolved.guest.id);
+    if (!persisted) return;
+    restoredRef.current = true;
+    queueMicrotask(() => {
+      setSubmitted(persisted.status);
+      if (persisted.status === "confirmed" && persisted.count > 0) {
+        setCount(persisted.count);
+      }
+    });
+  }, [resolved]);
 
   // R31 — navigation deep links. The event "address" is the venue/city
   // pair the host entered (no single venue field in the schema). Null
@@ -288,6 +343,12 @@ function RsvpInner() {
       hasNote: note.trim().length > 0,
     });
     setSubmitted(finalStatus);
+    // R163 — remember the response on this device (prevents repeat
+    // submissions; shows the "already replied" state on re-open).
+    writePersistedRsvp(resolved.eventId, resolved.guest.id, {
+      status: finalStatus,
+      count: finalCount,
+    });
     if (finalStatus === "confirmed") {
       setShowConfetti(true);
       window.setTimeout(() => setShowConfetti(false), 2400);

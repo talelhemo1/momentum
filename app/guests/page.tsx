@@ -643,7 +643,15 @@ function GuestsPageInner() {
 
           <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-3 stagger">
             <Stat label="סה״כ מוזמנים" value={stats.total} />
-            <Stat label="אישרו" value={stats.confirmedCount} sub={`${stats.confirmedHeads} ראשים`} accent />
+            {/* R163 — headline the total PEOPLE coming (sum of attendingCount),
+                not just how many guests replied. A family that replied "5
+                coming" now reads as 5, with the reply count as context. */}
+            <Stat
+              label="מגיעים (אנשים)"
+              value={stats.confirmedHeads}
+              sub={`${stats.confirmedCount} השיבו «מגיע»`}
+              accent
+            />
             <Stat label="נשלחו הזמנות" value={stats.invited} />
             <Stat label="לא יגיעו" value={stats.declined} />
           </div>

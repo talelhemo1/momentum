@@ -823,7 +823,11 @@ export default function SeatingPage() {
                         instead of left-aligning. Vertical gap stays
                         generous because the name label sits above
                         the circle and needs its own headroom. */}
-                    <div className="flex flex-wrap justify-center gap-x-10 gap-y-14 md:gap-y-20">
+                    {/* R163 — denser, smaller tables so the floor reads like a
+                        real event-hall plan (you see the whole room at a
+                        glance). Vertical gap tightened to match. Tapping a
+                        table still opens the large detail view. */}
+                    <div className="flex flex-wrap justify-center gap-x-10 gap-y-10 md:gap-y-12">
                       {tablesWithGuests
                         .filter(({ table }) => {
                           // R127 — apply the segmented filter from the
@@ -847,7 +851,11 @@ export default function SeatingPage() {
                           className={
                             table.shape === "knight"
                               ? "basis-full md:basis-[calc(66.666%-1.667rem)] lg:basis-[calc(50%-1.25rem)] flex-grow-0 flex-shrink-0"
-                              : "basis-[calc(50%-1.25rem)] sm:basis-[calc(33.333%-1.667rem)] lg:basis-[calc(25%-1.875rem)] flex-grow-0 flex-shrink-0"
+                              : // R163 — smaller round tables: 3 / 4 / 5 per row
+                                // (was 2 / 3 / 4) so the floor looks like a real
+                                // hall plan. Offsets match gap-x-10 (2.5rem):
+                                // (N-1)/N · 2.5rem.
+                                "basis-[calc(33.333%-1.667rem)] sm:basis-[calc(25%-1.875rem)] lg:basis-[calc(20%-2rem)] flex-grow-0 flex-shrink-0"
                           }
                         >
                         <Table3D
