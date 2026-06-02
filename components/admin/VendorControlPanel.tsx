@@ -600,16 +600,34 @@ function EditVendorModal({
   }, [onClose]);
 
   const submit = () => {
-    void onSave({
-      business_name: businessName,
-      category: category as VendorCategory,
-      city: city || undefined,
-      phone: phone || undefined,
-      website: website || undefined,
-      instagram: instagram || undefined,
-      facebook: facebook || undefined,
-      about: about || undefined,
-    });
+    // R157 — send only the fields that actually changed, using the
+    // trimmed value (empty string when cleared). The old code sent
+    // `value || undefined`, so clearing a field dropped it from the
+    // JSON entirely and the server never nulled it — making it
+    // impossible to remove a vendor's city / website / etc. An empty
+    // string survives JSON.stringify and the update route maps it to
+    // null. Diffing against the original also keeps the audit log's
+    // `changed_fields` accurate instead of always listing all eight.
+    const patch: Partial<VendorApplicationRecord> = {};
+    if (businessName.trim() !== vendor.business_name)
+      patch.business_name = businessName.trim();
+    if (category !== vendor.category)
+      patch.category = category as VendorCategory;
+    if (city.trim() !== (vendor.city ?? "")) patch.city = city.trim();
+    if (phone.trim() !== (vendor.phone ?? "")) patch.phone = phone.trim();
+    if (website.trim() !== (vendor.website ?? ""))
+      patch.website = website.trim();
+    if (instagram.trim() !== (vendor.instagram ?? ""))
+      patch.instagram = instagram.trim();
+    if (facebook.trim() !== (vendor.facebook ?? ""))
+      patch.facebook = facebook.trim();
+    if (about.trim() !== (vendor.about ?? "")) patch.about = about.trim();
+
+    if (Object.keys(patch).length === 0) {
+      onClose();
+      return;
+    }
+    void onSave(patch);
   };
 
   return (

@@ -71,12 +71,30 @@ export default function AdminVendorsPage() {
         return;
       }
       setAuthorized(true);
-      const { data } = await supabase
-        .from("vendor_applications")
-        .select("*")
-        .order("created_at", { ascending: false });
+      // R157 — load the full vendor list through the service-role
+      // /api/admin/vendors/list endpoint. A direct anon-JWT
+      // select on vendor_applications is gated by the "admin reads
+      // applications" RLS policy, which only matches emails in
+      // `admin_emails`. The founder is admin by code (isFounderEmail)
+      // and may not be in that table, so the direct read returned an
+      // empty list. The endpoint uses service-role + requireAdmin
+      // (founder-only) so it's RLS-immune and matches the UI gate.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (cancelled) return;
-      setApps((data as VendorApplicationRecord[]) ?? []);
+      const res = session
+        ? await fetch("/api/admin/vendors/list", {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          })
+        : null;
+      if (cancelled) return;
+      const json = res
+        ? ((await res.json().catch(() => ({}))) as {
+            vendors?: VendorApplicationRecord[];
+          })
+        : {};
+      setApps(json.vendors ?? []);
       setLoading(false);
     })();
     return () => {

@@ -6,7 +6,6 @@ import { Header } from "@/components/Header";
 import { Modal } from "@/components/Modal";
 import { AdminGuard, useAdminToken } from "@/components/admin/AdminGuard";
 import { showToast } from "@/components/Toast";
-import { getSupabase } from "@/lib/supabase";
 import {
   VENDOR_CATEGORIES,
   type VendorApplicationRecord,
@@ -100,31 +99,44 @@ function Inner() {
     }
   };
 
+  // R157 — read pending applications through the service-role
+  // /api/admin/vendors/list endpoint instead of a direct anon-JWT
+  // query. The "admin reads applications" RLS policy only grants SELECT
+  // to emails present in `admin_emails`, but the founder is admin
+  // BY CODE (isFounderEmail) and isn't necessarily a row in that table.
+  // The old direct query therefore returned an empty list for the
+  // founder — the same silent-empty bug R131 fixed for the dashboard
+  // panel. Filtering to `pending` happens client-side now.
   useEffect(() => {
     const c = new AbortController();
     void (async () => {
       try {
-        const supabase = getSupabase();
-        if (!supabase) {
-          setError("Supabase לא מוגדר.");
+        const res = await fetch("/api/admin/vendors/list", {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: c.signal,
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          vendors?: VendorApplicationRecord[];
+          message?: string;
+          error?: string;
+        };
+        if (!res.ok) {
+          setError(data.message ?? data.error ?? "שגיאה בטעינת הבקשות.");
           return;
         }
-        const { data, error: qErr } = await supabase
-          .from("vendor_applications")
-          .select("*")
-          .eq("status", "pending")
-          .order("created_at", { ascending: false });
-        if (qErr) {
+        const pending = (data.vendors ?? [])
+          .filter((v) => v.status === "pending")
+          .sort((a, b) =>
+            (b.created_at ?? "").localeCompare(a.created_at ?? ""),
+          );
+        setApps(pending);
+      } catch (e) {
+        if ((e as Error).name !== "AbortError")
           setError("שגיאה בטעינת הבקשות.");
-          return;
-        }
-        setApps((data as VendorApplicationRecord[]) ?? []);
-      } catch {
-        setError("שגיאה בטעינת הבקשות.");
       }
     })();
     return () => c.abort();
-  }, []);
+  }, [token]);
 
   const decide = async (
     id: string,
