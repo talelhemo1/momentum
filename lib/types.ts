@@ -287,6 +287,11 @@ export interface EventInfo {
   budgetTotal: number;
   guestEstimate: number;
   createdAt: string;
+  /** R159 — public URL of the couple's own designed invitation image
+   *  (uploaded by the host). When set, it's embedded in every invite
+   *  link and shown at the top of the guest's RSVP page. Lives in the
+   *  public `invitations` Supabase Storage bucket. */
+  invitationImageUrl?: string;
   /** Guardian consent — REQUIRED for events celebrating a minor (brit, bar/bat
    *  mitzvah). Set when the parent/legal guardian explicitly confirms during
    *  onboarding that they're acting on the minor's behalf. ISO timestamp records

@@ -22,6 +22,8 @@ import { WhatsAppRsvpModal } from "@/components/guests/WhatsAppRsvpModal";
 import { countVoiceEligible } from "@/hooks/useVoiceCampaign";
 import { countWhatsAppRsvpEligible } from "@/hooks/useWhatsAppRsvp";
 import { BulkReminderViaMomentumModal } from "@/components/guests/BulkReminderViaMomentumModal";
+import { ImportSpreadsheetModal } from "@/components/guests/ImportSpreadsheetModal";
+import { InvitationDesignCard } from "@/components/guests/InvitationDesignCard";
 import { buildWhatsAppMessage } from "@/lib/rsvpLinks";
 import { useGuestWhatsappLink, prewarmGuestWhatsappLinks } from "@/hooks/useGuestWhatsappLink";
 import { trackEvent, trackFirstOnce } from "@/lib/analytics";
@@ -102,6 +104,7 @@ function GuestsPageInner() {
   const [showExpress, setShowExpress] = useState(false);
   const [showVoice, setShowVoice] = useState(false);
   const [showWhatsAppRsvp, setShowWhatsAppRsvp] = useState(false);
+  const [showImportSheet, setShowImportSheet] = useState(false);
   const [filter, setFilter] = useState<"all" | GuestStatus>("all");
   const [search, setSearch] = useState("");
   const [importBusy, setImportBusy] = useState(false);
@@ -154,6 +157,26 @@ function GuestsPageInner() {
     setTimeout(() => setImportMsg(null), 4000);
     setPasteText("");
     setPasteOpen(false);
+  };
+
+  // R159 — bulk import from an Excel/CSV file. The modal has already
+  // parsed, auto-detected columns, and deduped against the existing
+  // list, so here we just add each row through the normal addGuest
+  // path (which mints RSVP tokens + triggers cloud sync).
+  const handleSheetImport = (parsed: Array<{ name: string; phone: string }>) => {
+    let added = 0;
+    for (const r of parsed) {
+      const name = r.name.trim();
+      if (!name) continue;
+      actions.addGuest({ name, phone: r.phone.trim() });
+      added += 1;
+    }
+    setShowImportSheet(false);
+    showToast(
+      added > 0 ? `✓ יובאו ${added} מוזמנים מהקובץ` : "לא נוספו מוזמנים",
+      added > 0 ? "success" : "info",
+    );
+    if (added > 0) trackEvent("guests_imported_spreadsheet", { count: added });
   };
 
   const importFromContacts = async () => {
@@ -408,6 +431,15 @@ function GuestsPageInner() {
                 <BookUser size={18} />
                 {importBusy ? "מייבא..." : "ייבוא מאנשי קשר"}
               </button>
+              {/* R159 — bulk import from an Excel / CSV file. */}
+              <button
+                onClick={() => setShowImportSheet(true)}
+                className="btn-secondary inline-flex items-center gap-2"
+                title="ייבוא רשימת מוזמנים מקובץ אקסל או CSV"
+              >
+                <Download size={18} />
+                ייבוא מאקסל
+              </button>
               {stats.expressEligible > 0 && (
                 <button
                   onClick={() => setShowExpress(true)}
@@ -536,6 +568,10 @@ function GuestsPageInner() {
           <div className="mt-4">
             <WhatsAppDeliveryPanel />
           </div>
+
+          {/* R159 — upload your own designed invitation; it's embedded in
+              every invite link + shown atop the guest's RSVP page. */}
+          {state.event && <InvitationDesignCard event={state.event} />}
 
           {/* R92 (R74) — toolbar-level paste panel. The empty-state has
               its own copy of this UI for first-visit users; this one
@@ -850,6 +886,15 @@ function GuestsPageInner() {
               onClose={() => setShowVoice(false)}
               guests={state.guests}
               event={state.event}
+            />
+          </ErrorBoundary>
+        )}
+        {showImportSheet && (
+          <ErrorBoundary section="import-spreadsheet">
+            <ImportSpreadsheetModal
+              existingGuests={state.guests}
+              onClose={() => setShowImportSheet(false)}
+              onConfirm={handleSheetImport}
             />
           </ErrorBoundary>
         )}

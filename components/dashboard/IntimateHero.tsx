@@ -88,6 +88,13 @@ export function IntimateHero({
       <div aria-hidden className="hero-luxury-conic" />
       <div aria-hidden className="hero-luxury-grain" />
       <div aria-hidden className="hero-luxury-frame" />
+      {/* R159 — premium foil sheen sweep + twinkling gold sparkles.
+          Desktop-only / reduced-motion-safe (see globals.css). */}
+      <div aria-hidden className="hero-luxury-sheen" />
+      <Spark className="hero-luxury-spark s1" />
+      <Spark className="hero-luxury-spark s2" />
+      <Spark className="hero-luxury-spark s3" />
+      <Spark className="hero-luxury-spark s4" />
 
       {/* Four corner ornaments. Each is the same SVG path; the CSS
           (`.tl/.tr/.bl/.br`) flips them with scaleX/scaleY so the
@@ -226,6 +233,18 @@ function Ornament({ className }: { className: string }) {
       <circle cx="4" cy="4" r="1.6" fill="currentColor" opacity="0.9" stroke="none" />
       {/* Tiny dot at the end of the secondary arc — finish detail. */}
       <circle cx="40" cy="0.5" r="1" fill="currentColor" opacity="0.6" stroke="none" />
+    </svg>
+  );
+}
+
+/**
+ * R159 — a tiny four-point gold sparkle. Positioned + twinkled by the
+ * `.hero-luxury-spark.sN` CSS classes. Decorative only.
+ */
+function Spark({ className }: { className: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z" />
     </svg>
   );
 }

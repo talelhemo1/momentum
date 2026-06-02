@@ -134,6 +134,7 @@ function RsvpInner() {
           city: ev.city,
           synagogue: ev.synagogue,
           hostPhone: ev.hostPhone,
+          invitationImageUrl: ev.invitationImageUrl,
           guest: { id: guest.id, name: guest.name },
         };
       }
@@ -149,6 +150,7 @@ function RsvpInner() {
         city: payload.e.city,
         synagogue: payload.e.synagogue,
         hostPhone: payload.e.hostPhone,
+        invitationImageUrl: payload.e.invitationImageUrl,
         guest: { id: payload.g.id, name: payload.g.name },
       };
     }
@@ -349,6 +351,7 @@ function RsvpInner() {
           city={resolved.city}
           synagogue={resolved.synagogue}
           guestName={resolved.guest.name}
+          invitationImageUrl={resolved.invitationImageUrl}
         />
 
         {venueText && navLinks && (
@@ -476,6 +479,7 @@ function Hero({
   city,
   synagogue,
   guestName,
+  invitationImageUrl,
 }: {
   eventType: EventType;
   subjects: string;
@@ -483,6 +487,9 @@ function Hero({
   city?: string;
   synagogue?: string;
   guestName: string;
+  /** R159 — couple's own designed invitation, shown as a banner above
+   *  the generated card when they uploaded one. */
+  invitationImageUrl?: string;
 }) {
   const dateFmt = new Date(dateISO).toLocaleDateString("he-IL", {
     weekday: "long",
@@ -497,6 +504,26 @@ function Hero({
       <div aria-hidden className="absolute -bottom-20 -start-20 w-56 h-56 rounded-full bg-[radial-gradient(circle,rgba(244,222,169,0.16),transparent_70%)] blur-3xl" />
 
       <div className="relative text-center">
+        {invitationImageUrl && (
+          <div
+            className="mb-6 -mx-2 rounded-2xl overflow-hidden"
+            style={{
+              border: "1px solid var(--border-gold)",
+              boxShadow: "0 18px 50px -20px var(--accent-glow)",
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element --
+                a guest-uploaded external Storage URL of unknown dimensions;
+                next/image adds no value on this anonymous, single-image page. */}
+            <img
+              src={invitationImageUrl}
+              alt={`הזמנה — ${subjects}`}
+              className="w-full h-auto block"
+              loading="eager"
+            />
+          </div>
+        )}
+
         <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs" style={{ background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-gold)" }}>
           <Sparkles size={13} className="text-[--accent]" />
           {EVENT_TYPE_LABELS[eventType]}

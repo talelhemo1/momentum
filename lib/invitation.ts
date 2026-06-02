@@ -38,6 +38,8 @@ export interface InvitationPayload {
     city?: string;
     synagogue?: string;
     hostPhone?: string;
+    /** R159 — couple's designed invitation image (public URL). */
+    invitationImageUrl?: string;
   };
   g: {
     id: string;
@@ -59,6 +61,7 @@ interface CompactInvitation {
   ph?: string;      // host phone
   gi: string;       // guest id
   gn: string;       // guest name
+  iv?: string;      // invitation image url (R159)
 }
 
 export interface ResponsePayload {
@@ -114,6 +117,7 @@ export function encodeInvitation(event: EventInfo, guest: Guest): string {
     ...(event.hostPhone ? { ph: event.hostPhone } : {}),
     gi: guest.id,
     gn: guest.name,
+    ...(event.invitationImageUrl ? { iv: event.invitationImageUrl } : {}),
   };
   return encodeB64Url(JSON.stringify(payload));
 }
@@ -141,6 +145,7 @@ export function decodeInvitation(s: string): InvitationPayload | null {
           city: c.c,
           synagogue: c.s,
           hostPhone: c.ph,
+          invitationImageUrl: c.iv,
         },
         g: { id: c.gi, name: c.gn },
       };
