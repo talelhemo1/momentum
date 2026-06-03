@@ -36,7 +36,6 @@ import {
   HelpCircle,
   X,
   RefreshCw,
-  AlertCircle,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -615,17 +614,20 @@ function DeleteAccountDialog({
 }
 
 /**
- * R14 — moved from app/dashboard/page.tsx (Hero header).
- * Wipes the active event slot and routes to /onboarding for a fresh setup.
- * Lives next to "delete account" because it's destructive in scope (event +
- * guests + budget + seating + checklist) but stops short of nuking the user.
+ * R14 / R164 — "start a new event". NON-destructive: the current event is
+ * snapshotted into the event-switcher (eventSlots.createNew) and a fresh
+ * setup opens, so nothing is deleted. The owner reported the old behavior
+ * (deleteActive → wipe everything → onboarding) as data loss. To delete a
+ * specific event permanently, use the trash icon in the event switcher;
+ * to wipe the whole account, use "delete account" below.
  */
 function RestartEventButton() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
   const onConfirm = () => {
-    eventSlots.deleteActive();
+    // Non-destructive — saves the current event, opens a blank one.
+    eventSlots.createNew();
     setOpen(false);
     router.push("/onboarding");
   };
@@ -641,7 +643,7 @@ function RestartEventButton() {
           border: "1px solid var(--border-strong)",
         }}
       >
-        <RefreshCw size={14} aria-hidden /> התחל אירוע חדש מאפס
+        <RefreshCw size={14} aria-hidden /> תכנון אירוע חדש
       </button>
 
       {open && (
@@ -654,26 +656,23 @@ function RestartEventButton() {
             onClick={(e) => e.stopPropagation()}
           >
             <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center text-red-300 mb-4"
+              className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
               style={{
-                background: "rgba(248,113,113,0.1)",
-                border: "1px solid rgba(248,113,113,0.3)",
+                background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                border: "1px solid var(--border-gold)",
+                color: "var(--accent)",
               }}
             >
-              <AlertCircle size={22} aria-hidden />
+              <RefreshCw size={22} aria-hidden />
             </div>
-            <h3 className="text-xl font-bold">להתחיל מחדש?</h3>
+            <h3 className="text-xl font-bold">לתכנן אירוע חדש?</h3>
             <p
               className="mt-2 text-sm leading-relaxed"
               style={{ color: "var(--foreground-soft)" }}
             >
-              הפעולה תמחק את האירוע הנוכחי, כולל המוזמנים, התקציב, סידורי
-              ההושבה והצ׳קליסט.{" "}
-              <strong>לא ניתן לשחזר אחרי הפעולה.</strong>
-              <br />
-              <br />
-              אם אתה רוצה לשמור את האירוע הזה ופשוט להוסיף עוד אחד — לחץ על
-              שם האירוע בכותרת, ובחר &quot;אירוע חדש&quot;.
+              נפתח לך אירוע חדש לתכנון. <strong>האירוע הנוכחי יישמר</strong> —
+              תוכל לחזור אליו בכל רגע דרך מחליף האירועים שבכותרת. שום דבר לא
+              נמחק.
             </p>
             <div className="mt-6 flex items-center justify-end gap-2">
               <button onClick={() => setOpen(false)} className="btn-secondary">
@@ -681,9 +680,9 @@ function RestartEventButton() {
               </button>
               <button
                 onClick={onConfirm}
-                className="rounded-full px-5 py-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition"
+                className="btn-gold rounded-full px-5 py-2 text-sm font-bold"
               >
-                כן, מחק והתחל
+                כן, אירוע חדש
               </button>
             </div>
           </div>

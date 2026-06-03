@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Activity,
@@ -13,10 +13,10 @@ import {
   MessageCircle,
   MoreHorizontal,
   Moon,
+  Plus,
   Settings,
   Shield,
   Sun,
-  Trash2,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -25,7 +25,6 @@ import { Avatar } from "./Avatar";
 // R90 — ChatBell removed (in-app chat retired).
 import { NotificationsBell } from "./NotificationsBell";
 import { EventSwitcher } from "./EventSwitcher";
-import { DeleteEventModal } from "./DeleteEventModal";
 import { useTheme } from "@/lib/theme";
 import { useUser, userActions } from "@/lib/user";
 import { useIsAdmin } from "@/lib/useIsAdmin";
@@ -797,7 +796,7 @@ function AvatarMenu({
   onSignOut: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [showDelete, setShowDelete] = useState(false);
+  const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -907,23 +906,35 @@ function AvatarMenu({
             />
           </div>
 
-          {/* R102 — destructive zone: "delete event & start over" sits
-              above the sign-out, both styled in soft-red so the user
-              recognizes the section. Clicking opens the type-to-confirm
-              modal; the menu itself just closes. */}
+          {/* R164 — "start a new event" is now NON-destructive. The
+              owner reported that the old "delete event & start over" item
+              wiped everything and dropped the user back into onboarding.
+              It now SAVES the current event into the event-switcher and
+              opens a fresh setup, so nothing is lost and the old event is
+              one tap away. Permanent deletion lives in Settings (with a
+              clear warning) and per-event in the event switcher. */}
           <div style={{ borderTop: "1px solid var(--border)" }}>
             <button
               type="button"
               onClick={() => {
                 setOpen(false);
-                setShowDelete(true);
+                eventSlots.createNew();
+                router.push("/onboarding");
               }}
               role="menuitem"
               className="w-full flex items-center gap-2.5 px-4 py-3 text-sm transition hover:bg-[var(--secondary-button-bg)]"
-              style={{ color: "rgb(252,165,165)" }}
+              style={{ color: "var(--foreground-soft)" }}
             >
-              <Trash2 size={15} aria-hidden />
-              <span className="flex-1 text-start">מחק אירוע והתחל מחדש</span>
+              <Plus size={15} aria-hidden style={{ color: "var(--accent)" }} />
+              <span className="flex-1 text-start">
+                אירוע חדש
+                <span
+                  className="block text-[11px]"
+                  style={{ color: "var(--foreground-muted)" }}
+                >
+                  שומר את האירוע הנוכחי — אפשר לחזור אליו בכל רגע
+                </span>
+              </span>
             </button>
             <button
               type="button"
@@ -943,10 +954,6 @@ function AvatarMenu({
             </button>
           </div>
         </div>
-      )}
-
-      {showDelete && (
-        <DeleteEventModal onClose={() => setShowDelete(false)} />
       )}
     </div>
   );
