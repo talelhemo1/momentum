@@ -132,55 +132,8 @@ export async function verifyRsvpToken(
   return hmacVerify(signingKey, rsvpMessage(eventId, guestId), token);
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// AES-GCM encryption (field-level encryption for cloud-bound sensitive data)
-//
-// TODO(launch): wire these up to either:
-//   (a) localStorage at-rest encryption — derive key from a stable browser
-//       fingerprint + secret seed, encrypt before write in lib/store.ts.
-//   (b) Per-field encryption for sensitive cloud fields (guest phones, notes)
-//       in lib/sync.ts — encrypt before upsert, decrypt after pull.
-// SECURITY.md tracks this as an open gap. If neither is shipped by launch
-// week (June 2026), delete these helpers — unused crypto is a maintenance
-// liability, not a feature.
-// ──────────────────────────────────────────────────────────────────────────
-
-async function importAesKey(secretB64Url: string): Promise<CryptoKey> {
-  const raw = base64UrlToBytes(secretB64Url);
-  if (!raw) throw new Error("invalid encryption key");
-  // Derive 256-bit AES-GCM key from the 32-byte HMAC key (or any 32-byte secret).
-  const baseKey = await crypto.subtle.importKey("raw", asArrayBuffer(raw), { name: "HKDF" }, false, ["deriveKey"]);
-  return crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt: asArrayBuffer(enc.encode("momentum/aes/v1")), info: asArrayBuffer(enc.encode("field-encryption")) },
-    baseKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
-
-/** Encrypt a small string. Output: `v1.{iv}.{ciphertext}` all base64url. */
-export async function encryptString(secretB64Url: string, plaintext: string): Promise<string> {
-  const key = await importAesKey(secretB64Url);
-  const iv = new Uint8Array(12);
-  crypto.getRandomValues(iv);
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: asArrayBuffer(iv) }, key, asArrayBuffer(enc.encode(plaintext)));
-  return `v1.${bytesToBase64Url(iv)}.${bytesToBase64Url(new Uint8Array(ct))}`;
-}
-
-const dec = new TextDecoder();
-
-export async function decryptString(secretB64Url: string, payload: string): Promise<string | null> {
-  try {
-    const [version, ivB64, ctB64] = payload.split(".");
-    if (version !== "v1") return null;
-    const iv = base64UrlToBytes(ivB64);
-    const ct = base64UrlToBytes(ctB64);
-    if (!iv || !ct) return null;
-    const key = await importAesKey(secretB64Url);
-    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: asArrayBuffer(iv) }, key, asArrayBuffer(ct));
-    return dec.decode(pt);
-  } catch {
-    return null;
-  }
-}
+// R166 — removed unused AES-GCM field-encryption helpers
+// (encryptString/decryptString/importAesKey). They were never wired up;
+// their own note said to delete them if unshipped by launch (June 2026).
+// Unused crypto is a maintenance/audit liability — gone. Restore from git
+// history if field-level encryption is ever actually implemented.

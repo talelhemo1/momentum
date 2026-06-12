@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Heebo, Frank_Ruhl_Libre } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
-import { AssistantWidget } from "@/components/AssistantWidget";
+import { DeferredAssistant } from "@/components/DeferredAssistant";
 import { ToastHost } from "@/components/Toast";
 // R125 — MobileBottomNav removed by product call. The two-tier Header
 // already exposes the same destinations as a horizontally-scrolling pill
@@ -178,7 +178,7 @@ export default async function RootLayout({
         <VitalsReporter />
         <ScrollProgress />
         {children}
-        <AssistantWidget />
+        <DeferredAssistant />
         <ToastHost />
       </body>
     </html>

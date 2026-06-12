@@ -1,5 +1,16 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { SignupClient } from "./SignupClient";
+
+// R166 — unique title/description for the signup page (it's public +
+// indexable + in the sitemap). Without this it inherited the generic
+// layout title, hurting its search snippet.
+export const metadata: Metadata = {
+  title: "הרשמה וכניסה — Momentum",
+  description:
+    "פתחו חשבון Momentum בחינם והתחילו לתכנן את האירוע — ניהול מוזמנים, אישורי הגעה ב-WhatsApp, תקציב חכם וסידור הושבה, הכל במקום אחד.",
+  alternates: { canonical: "/signup" },
+};
 
 /**
  * R62 (R52) — signup-page wrapper that emits the same pre-paint
