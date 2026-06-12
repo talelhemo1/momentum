@@ -156,6 +156,33 @@
 
 * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
+/* R165 — app-wide mobile comfort baseline.
+   • tap-highlight: transparent — kill the gray flash box iOS/Android
+     paint over every tapped link/button (looks broken on a dark UI).
+   • text-size-adjust — stop mobile browsers auto-inflating body text in
+     landscape, which broke RTL line lengths.
+   • touch-action: manipulation on interactive elements removes the
+     ~300ms double-tap-to-zoom delay so taps feel instant. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+* { -webkit-tap-highlight-color: transparent; }
+button, a, [role="button"], summary, label, input, select, textarea {
+  touch-action: manipulation;
+}
+
+/* R165 — the single biggest mobile annoyance: iOS Safari ZOOMS the whole
+   page when you focus a form field whose font-size is < 16px. Many dense
+   forms in the app use `text-sm` (14px) on inputs, so focusing them
+   jumped the layout. Force a 16px floor on every real text field on
+   phones (desktop keeps the designed size). Excludes checkbox/radio/
+   range/color/file which don't take text and don't trigger the zoom. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 html, body {
   background: var(--background);
   color: var(--foreground);

@@ -1251,7 +1251,7 @@ function GuestRow({
                   : "שלח הזמנה בוואטסאפ"
             }
             aria-busy={!!guest.phone && !whatsappUrl}
-            className="ms-1 w-9 h-9 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black inline-flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-emerald-500"
+            className="ms-1 w-11 h-11 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black inline-flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-emerald-500"
             aria-label="שלח בוואטסאפ"
           >
             {guest.phone && !whatsappUrl ? (
@@ -1262,7 +1262,7 @@ function GuestRow({
           </button>
           <button
             onClick={() => setOpen((v) => !v)}
-            className="w-9 h-9 rounded-full border border-white/15 hover:bg-white/5 inline-flex items-center justify-center"
+            className="w-11 h-11 rounded-full border border-white/15 hover:bg-white/5 inline-flex items-center justify-center"
             title="פרטים נוספים"
             aria-label="פרטים נוספים"
           >
@@ -1500,7 +1500,9 @@ function AddGuestModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div className="card glass-strong p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal>
+      {/* R165 — max-h + scroll so the 7 fields + action buttons stay
+          reachable on short phones (esp. with the keyboard open). */}
+      <div className="card glass-strong p-6 w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Users size={20} className="text-[--accent]" />

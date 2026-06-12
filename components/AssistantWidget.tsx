@@ -223,7 +223,7 @@ export function AssistantWidget() {
         <button
           onClick={() => setOpen(true)}
           aria-label="פתח עוזר אישי"
-          className="assistant-launcher fixed bottom-[88px] md:bottom-5 end-5 z-40 w-14 h-14 rounded-full pulse-gold flex items-center justify-center shadow-[0_18px_40px_-12px_var(--accent-glow)] transition hover:scale-105"
+          className="assistant-launcher fixed bottom-[calc(env(safe-area-inset-bottom)+1.25rem)] end-5 z-40 w-14 h-14 rounded-full pulse-gold flex items-center justify-center shadow-[0_18px_40px_-12px_var(--accent-glow)] transition hover:scale-105"
           style={{ background: "linear-gradient(135deg, var(--gold-100), var(--gold-500))", color: "var(--gold-button-text)" }}
         >
           <Sparkles size={22} />
@@ -238,7 +238,7 @@ export function AssistantWidget() {
           chrome, so the panel's maxHeight stays put regardless of
           chrome state. */}
       {open && (
-        <div className="fixed bottom-[88px] md:bottom-5 end-5 z-40 w-[calc(100%-2.5rem)] max-w-[400px] flex flex-col rounded-3xl glass-strong overflow-hidden shadow-[0_30px_70px_-20px_rgba(0,0,0,0.6)] border" style={{ borderColor: "var(--border-strong)", maxHeight: "min(640px, calc(100svh - 8rem))" }}>
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+1.25rem)] end-5 z-40 w-[calc(100%-2.5rem)] max-w-[400px] flex flex-col rounded-3xl glass-strong overflow-hidden shadow-[0_30px_70px_-20px_rgba(0,0,0,0.6)] border" style={{ borderColor: "var(--border-strong)", maxHeight: "min(640px, calc(100svh - 8rem))" }}>
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border)" }}>
             <div className="flex items-center gap-3">
