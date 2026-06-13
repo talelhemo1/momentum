@@ -788,7 +788,7 @@ function ChooseStep({
           <Sparkles size={11} />
           {isSignin ? "ברוכים השבים" : "ברוכים הבאים"}
         </span>
-        <h1 className="mt-5 text-3xl md:text-4xl font-extrabold tracking-tight gradient-text">
+        <h1 className="mt-5 text-h1 gradient-text">
           {isSignin ? "כניסה ל-Momentum" : "הצטרף ל-Momentum"}
         </h1>
         <p className="mt-3 text-white/60 leading-relaxed">
@@ -918,7 +918,7 @@ function EmailStep({
         <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F4DEA9]/15 to-[#A8884A]/5 border border-[var(--border-gold)] items-center justify-center text-[--accent]">
           <Mail size={22} />
         </div>
-        <h1 className="mt-5 text-2xl md:text-3xl font-bold tracking-tight gradient-text">
+        <h1 className="mt-5 text-h2 gradient-text">
           {isSignup ? "הרשמה במייל" : "התחברות במייל"}
         </h1>
         <p className="mt-3 text-white/60 text-sm">
@@ -1246,7 +1246,7 @@ function PhoneStep({
         <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F4DEA9]/15 to-[#A8884A]/5 border border-[var(--border-gold)] items-center justify-center text-[--accent]">
           <Phone size={22} />
         </div>
-        <h1 className="mt-5 text-2xl md:text-3xl font-bold tracking-tight gradient-text">
+        <h1 className="mt-5 text-h2 gradient-text">
           {otpSent ? "אישור קוד" : "התחברות במספר"}
         </h1>
         <p className="mt-3 text-white/60 text-sm leading-relaxed">
@@ -1357,7 +1357,7 @@ function NameStep({
         <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F4DEA9]/15 to-[#A8884A]/5 border border-[var(--border-gold)] items-center justify-center text-[--accent]">
           <Sparkles size={22} />
         </div>
-        <h1 className="mt-5 text-2xl md:text-3xl font-bold tracking-tight gradient-text">
+        <h1 className="mt-5 text-h2 gradient-text">
           איך נקרא לך?
         </h1>
         <p className="mt-3 text-white/60 text-sm">

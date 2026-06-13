@@ -10,10 +10,7 @@ export function FinalCTA() {
         className="glow-orb glow-orb-gold w-[900px] h-[900px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-55"
       />
       <div className="max-w-3xl mx-auto px-5 sm:px-8 text-center relative z-10">
-        <h2
-          className="font-extrabold tracking-tight leading-[1.1] gradient-gold-shimmer"
-          style={{ fontSize: "clamp(2.25rem, 7vw, 4rem)" }}
-        >
+        <h2 className="text-display-lg gradient-gold-shimmer">
           תכננו את האירוע. חיו את הרגעים.
         </h2>
         <p

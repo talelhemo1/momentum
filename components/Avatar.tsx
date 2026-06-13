@@ -20,7 +20,19 @@ interface AvatarProps {
   size?: number;
   /** Override class for ring/border behaviors per surface. */
   className?: string;
+  /**
+   * R102 — optional presence dot in the corner. Omit for no dot.
+   * Colors map to the semantic status tokens.
+   */
+  status?: "online" | "busy" | "away";
 }
+
+// R102 — semantic dot colors for the optional presence indicator.
+const STATUS_COLOR: Record<NonNullable<AvatarProps["status"]>, string> = {
+  online: "var(--success)",
+  busy: "var(--error)",
+  away: "var(--warning)",
+};
 
 const GRADIENTS: Array<[string, string]> = [
   // Each pair is [from, to] for a 135deg linear-gradient. Picked to read on
@@ -51,15 +63,17 @@ function hash(s: string): number {
   return h;
 }
 
-export function Avatar({ name, id, size = 40, className = "" }: AvatarProps) {
+export function Avatar({ name, id, size = 40, className = "", status }: AvatarProps) {
   const initial = (name?.trim().charAt(0) || "?").toUpperCase();
   const [from, to] = id ? GRADIENTS[hash(id) % GRADIENTS.length] : FALLBACK;
   const fontSize = Math.max(11, Math.round(size * 0.42));
+  // R102 — dot scales with the avatar (≈28% of size), min 8px.
+  const dotSize = Math.max(8, Math.round(size * 0.28));
   return (
     <span
       role="img"
       aria-label={name ? `אווטר של ${name}` : "אווטר"}
-      className={`inline-flex items-center justify-center font-bold shrink-0 ${className}`}
+      className={`relative inline-flex items-center justify-center font-bold shrink-0 ${className}`}
       style={{
         width: size,
         height: size,
@@ -68,9 +82,30 @@ export function Avatar({ name, id, size = 40, className = "" }: AvatarProps) {
         color: "rgba(0,0,0,0.85)",
         fontSize,
         lineHeight: 1,
+        // R102 — a hairline inset ring + top sheen so the avatar keeps its
+        // edge on a gold card (where it used to melt into the background)
+        // and reads as a lit, raised token.
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.25), inset 0 0 0 1px rgba(0,0,0,0.12)",
       }}
     >
       {initial}
+      {status && (
+        <span
+          aria-hidden
+          className="absolute"
+          style={{
+            width: dotSize,
+            height: dotSize,
+            // Bottom-left in RTL reads as the "start" corner.
+            insetInlineStart: 0,
+            bottom: 0,
+            borderRadius: "var(--radius-pill)",
+            background: STATUS_COLOR[status],
+            boxShadow: "0 0 0 2px var(--surface)",
+          }}
+        />
+      )}
     </span>
   );
 }

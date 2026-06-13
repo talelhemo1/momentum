@@ -44,20 +44,21 @@ export function EmptyState({
     >
       <div
         aria-hidden
-        className="inline-flex w-16 h-16 rounded-2xl items-center justify-center mb-3"
+        className="inline-flex w-16 h-16 items-center justify-center mb-4"
         style={{
-          background: "var(--surface-2)",
+          background:
+            "radial-gradient(circle at 50% 35%, var(--accent-soft), var(--surface-2))",
           color: "var(--accent)",
-          border: "1px solid var(--border)",
+          border: "1px solid var(--border-gold)",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--shadow-gold)",
         }}
       >
         {icon}
       </div>
-      <h3 className="text-lg md:text-xl font-extrabold tracking-tight gradient-gold">
-        {title}
-      </h3>
+      <h3 className="text-h3 gradient-gold">{title}</h3>
       <p
-        className="mt-2 text-sm leading-relaxed max-w-md mx-auto"
+        className="text-body-sm mt-2 max-w-md mx-auto"
         style={{ color: "var(--foreground-soft)" }}
       >
         {description}
