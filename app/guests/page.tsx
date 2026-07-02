@@ -69,6 +69,8 @@ import {
   RefreshCw,
   Sparkles,
   X,
+  Pencil,
+  FileText,
 } from "lucide-react";
 
 const STATUS_LABEL: Record<GuestStatus, string> = {
@@ -677,6 +679,15 @@ function GuestsPageInner() {
           {stats.total > 0 && (
             <div className="mt-5 flex flex-wrap items-center gap-2">
               <button
+                onClick={() => exportGuestsPdf(state.guests, state.event!)}
+                className="btn-secondary text-sm py-2 px-3 inline-flex items-center gap-2"
+                style={{ borderColor: "var(--border-gold)", color: "var(--accent)" }}
+                title="ייצוא כל רשימת המוזמנים כטבלה מסודרת ל-PDF (הדפסה / שמירה כקובץ)"
+              >
+                <FileText size={14} />
+                ייצוא PDF
+              </button>
+              <button
                 onClick={() => exportGuestsCsv(state.guests, state.event!)}
                 className="btn-secondary text-sm py-2 px-3 inline-flex items-center gap-2"
                 title="הורד את כל רשימת המוזמנים כ-CSV (פותח באקסל / Google Sheets)"
@@ -1026,6 +1037,7 @@ function GuestRow({
   glow?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const origin = tryGetPublicOrigin();
   // Build the signed RSVP URL lazily + cached via useGuestWhatsappLink.
   // The hook holds a module-scoped Promise cache keyed on event/guest/token
@@ -1189,28 +1201,46 @@ function GuestRow({
       data-glow-key={glow ?? undefined}
     >
       <div className="flex items-center gap-4">
-        <Avatar name={guest.name} id={guest.id} size={44} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="font-semibold truncate">{guest.name}</div>
-            <span className={`inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 ${statusUI.color}`}>
-              {statusUI.icon}
-              {STATUS_LABEL[guest.status]}
-              {guest.status === "confirmed" && guest.attendingCount > 1 && (
-                <span className="font-bold">· {guest.attendingCount}</span>
-              )}
-            </span>
+        {/* Click the person → edit their details (name, phone, party size).
+            The whole avatar+name block is the tap target so "click on someone
+            to edit them" works exactly as expected. Quick-status buttons and
+            the details chevron live in their own group and are unaffected. */}
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="group flex items-center gap-4 flex-1 min-w-0 text-start rounded-xl p-1 -m-1 hover:bg-white/[0.04] focus-visible:bg-white/[0.04] transition"
+          title="ערוך פרטים"
+          aria-label={`ערוך את ${guest.name}`}
+        >
+          <Avatar name={guest.name} id={guest.id} size={44} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="font-semibold truncate">{guest.name}</div>
+              <Pencil
+                size={12}
+                aria-hidden
+                className="shrink-0 opacity-40 group-hover:opacity-90 transition"
+                style={{ color: "var(--accent)" }}
+              />
+              <span className={`inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 ${statusUI.color}`}>
+                {statusUI.icon}
+                {STATUS_LABEL[guest.status]}
+                {guest.status === "confirmed" && guest.attendingCount > 1 && (
+                  <span className="font-bold">· {guest.attendingCount}</span>
+                )}
+              </span>
+            </div>
+            {guest.phone ? (
+              <div className="text-xs text-white/50 mt-0.5 flex items-center gap-1.5">
+                <Phone size={12} /> {guest.phone}
+              </div>
+            ) : (
+              <div className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: "var(--foreground-muted)" }}>
+                <Phone size={12} /> הוסף מספר טלפון
+              </div>
+            )}
           </div>
-          {guest.phone ? (
-            <div className="text-xs text-white/50 mt-0.5 flex items-center gap-1.5">
-              <Phone size={12} /> {guest.phone}
-            </div>
-          ) : (
-            <div className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: "var(--foreground-muted)" }}>
-              <Phone size={12} /> אין מספר טלפון
-            </div>
-          )}
-        </div>
+        </button>
         {/* Inline quick-actions: a single tap toggles the status. The whole row
             stays compact and you don't have to expand "פרטים" first. */}
         <div className="flex items-center gap-1.5">
@@ -1352,6 +1382,14 @@ function GuestRow({
           <div className="sm:col-span-2 flex flex-wrap gap-2">
             <button
               type="button"
+              onClick={() => setEditing(true)}
+              className="text-xs rounded-full border px-3 hover:bg-white/5 inline-flex items-center gap-1.5"
+              style={{ borderColor: "var(--border-gold)", color: "var(--accent)", minHeight: 36 }}
+            >
+              <Pencil size={12} /> ערוך פרטים
+            </button>
+            <button
+              type="button"
               onClick={() => actions.setRsvp(guest.id, "confirmed", guest.attendingCount || 1)}
               className="text-xs rounded-full border border-emerald-400/30 text-emerald-300 px-3 hover:bg-emerald-400/10 inline-flex items-center"
               style={{ minHeight: 36 }}
@@ -1376,6 +1414,10 @@ function GuestRow({
             </button>
           </div>
         </div>
+      )}
+
+      {editing && (
+        <EditGuestModal guest={guest} onClose={() => setEditing(false)} />
       )}
     </div>
   );
@@ -1645,6 +1687,242 @@ function AddGuestModal({ onClose }: { onClose: () => void }) {
         <div className="mt-6 flex items-center justify-end gap-2">
           <button onClick={onClose} className="btn-secondary">ביטול</button>
           <button onClick={submit} className="btn-gold">הוסף</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Edit an existing guest. Mirrors AddGuestModal's fields but pre-filled and
+ * writes through `actions.updateGuest`. The two fields the host most often
+ * needs to fix after import are here up top: how many people are coming
+ * (`attendingCount`) and the phone number — both were previously only
+ * settable at creation time or implicitly via an RSVP tap.
+ */
+function EditGuestModal({ guest, onClose }: { guest: Guest; onClose: () => void }) {
+  const { state } = useAppState();
+  const [name, setName] = useState(guest.name);
+  const [phone, setPhone] = useState(guest.phone ?? "");
+  const [count, setCount] = useState(String(guest.attendingCount ?? 1));
+  const [side, setSide] = useState<NonNullable<Guest["side"]> | "">(guest.side ?? "");
+  const [group, setGroup] = useState<GuestGroup | "">(guest.group ?? "");
+  const [ageGroup, setAgeGroup] = useState<GuestAgeGroup | "">(guest.ageGroup ?? "");
+  const [circle, setCircle] = useState(guest.circle ?? "");
+  const [notes, setNotes] = useState(guest.notes ?? "");
+  const isValid = name.trim().length > 0;
+
+  const circleSuggestions = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of state.guests) {
+      if (g.circle?.trim()) set.add(g.circle.trim());
+    }
+    for (const t of state.tables) {
+      if (t.circle?.trim()) set.add(t.circle.trim());
+    }
+    return Array.from(set).sort();
+  }, [state.guests, state.tables]);
+
+  const submit = () => {
+    if (!isValid) return;
+    const heads = Math.max(1, Math.floor(Number(count) || 1));
+    actions.updateGuest(guest.id, {
+      name: name.trim(),
+      phone: phone.trim(),
+      attendingCount: heads,
+      // Keep the explicit `plusOnes` alias in sync (addGuest does the same),
+      // so seating / RSVP code that reads either field stays consistent.
+      plusOnes: Math.max(0, heads - 1),
+      side: side || undefined,
+      group: group || undefined,
+      ageGroup: ageGroup || undefined,
+      circle: circle.trim() || undefined,
+      notes: notes.trim() || undefined,
+    });
+    showToast("הפרטים נשמרו ✓", "success");
+    onClose();
+  };
+
+  // Esc to close, Enter to save (but not while typing in the notes textarea).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (
+        e.key === "Enter" &&
+        isValid &&
+        !(e.target instanceof HTMLTextAreaElement)
+      ) {
+        submit();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isValid, name, phone, count, side, group, ageGroup, circle, notes]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="card glass-strong p-6 w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Pencil size={18} className="text-[--accent]" />
+            <h3 className="text-xl font-bold">עריכת מוזמן</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="סגור"
+            className="w-11 h-11 -m-2 flex items-center justify-center rounded-full hover:bg-[var(--secondary-button-bg)] transition"
+          >
+            <X size={18} aria-hidden />
+          </button>
+        </div>
+        <div className="mt-5 space-y-4">
+          <div>
+            <label className="block text-sm mb-1.5" style={{ color: "var(--foreground-soft)" }} htmlFor="edit-guest-name">
+              שם מלא <span style={{ color: "var(--accent)" }}>*</span>
+            </label>
+            <input
+              id="edit-guest-name"
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="דנה כהן"
+              autoComplete="name"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1.5" style={{ color: "var(--foreground-soft)" }} htmlFor="edit-guest-phone">
+              טלפון <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>(נדרש לוואטסאפ)</span>
+            </label>
+            <input
+              id="edit-guest-phone"
+              className="input"
+              dir="ltr"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="050-1234567"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm mb-1.5" style={{ color: "var(--foreground-soft)" }} htmlFor="edit-guest-count">
+                כמה אנשים מגיעים?
+              </label>
+              <input
+                id="edit-guest-count"
+                className="input"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={count}
+                onChange={(e) => setCount(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm mb-1.5" style={{ color: "var(--foreground-soft)" }}>
+                צד
+              </label>
+              <select
+                className="input"
+                value={side}
+                onChange={(e) => setSide(e.target.value as NonNullable<Guest["side"]> | "")}
+                aria-label="צד (חתן / כלה / משותף)"
+              >
+                <option value="">לא צוין</option>
+                <option value="bride">כלה</option>
+                <option value="groom">חתן</option>
+                <option value="shared">משותף</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm mb-1.5" style={{ color: "var(--foreground-soft)" }}>
+                קבוצה <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>(להושבה)</span>
+              </label>
+              <select
+                className="input"
+                value={group}
+                onChange={(e) => setGroup(e.target.value as GuestGroup | "")}
+                aria-label="קבוצה חברתית"
+              >
+                <option value="">לא צוין</option>
+                {(Object.keys(GUEST_GROUP_LABELS) as GuestGroup[]).map((g) => (
+                  <option key={g} value={g}>{GUEST_GROUP_LABELS[g]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm mb-1.5" style={{ color: "var(--foreground-soft)" }}>
+                גיל <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>(לאיזון)</span>
+              </label>
+              <select
+                className="input"
+                value={ageGroup}
+                onChange={(e) => setAgeGroup(e.target.value as GuestAgeGroup | "")}
+                aria-label="קבוצת גיל"
+              >
+                <option value="">לא צוין</option>
+                {(Object.keys(GUEST_AGE_GROUP_LABELS) as GuestAgeGroup[]).map((a) => (
+                  <option key={a} value={a}>{GUEST_AGE_GROUP_LABELS[a]}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm mb-1.5" style={{ color: "var(--foreground-soft)" }}>
+              חוג חברתי{" "}
+              <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                (תואם לשולחן באותו שם בהושבה אוטומטית)
+              </span>
+            </label>
+            <input
+              className="input"
+              list="edit-circle-suggestions"
+              value={circle}
+              onChange={(e) => setCircle(e.target.value)}
+              placeholder="חברים מהצבא / משפחה רחוקה / חברי כיתה י׳"
+              maxLength={60}
+              aria-label="חוג חברתי"
+            />
+            {circleSuggestions.length > 0 && (
+              <datalist id="edit-circle-suggestions">
+                {circleSuggestions.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm mb-1.5" style={{ color: "var(--foreground-soft)" }} htmlFor="edit-guest-notes">
+              הערות <span className="text-xs" style={{ color: "var(--foreground-muted)" }}>(לא חובה)</span>
+            </label>
+            <textarea
+              id="edit-guest-notes"
+              className="input"
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="אלרגיה, צמחוני, מגיע מאוחר…"
+              maxLength={200}
+            />
+          </div>
+        </div>
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="btn-secondary">ביטול</button>
+          <button onClick={submit} disabled={!isValid} className="btn-gold disabled:opacity-40">
+            שמור
+          </button>
         </div>
       </div>
     </div>
@@ -2145,6 +2423,204 @@ function exportGuestsCsv(guests: Guest[], event: import("@/lib/types").EventInfo
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   trackEvent("guests_csv_export", { eventId: event.id, count: guests.length });
+}
+
+// ─────────────────────────────── PDF (print) export ───────────────────────────────
+// jsPDF handles Hebrew/RTL poorly (needs a bundled Hebrew font + manual bidi),
+// so we build a clean, self-contained print document and let the browser's
+// "Save as PDF" do the rasterizing. This gives perfect Hebrew, selectable
+// text, a repeating table header across pages, and zero dependencies.
+
+const STATUS_PRINT_STYLE: Record<GuestStatus, { label: string; bg: string; fg: string }> = {
+  confirmed: { label: "אישר", bg: "#E4F3EA", fg: "#1E7A44" },
+  maybe: { label: "אולי", bg: "#FBF1DA", fg: "#9A6B12" },
+  invited: { label: "נשלחה הזמנה", bg: "#E5EEFA", fg: "#2C5AA0" },
+  pending: { label: "ממתין", bg: "#F0EFEC", fg: "#6B6459" },
+  declined: { label: "לא מגיע", bg: "#FBE6E6", fg: "#B23B3B" },
+};
+
+const STATUS_PRINT_ORDER: GuestStatus[] = ["confirmed", "maybe", "invited", "pending", "declined"];
+
+function htmlEsc(s: string): string {
+  return (s ?? "").replace(/[&<>"']/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
+  );
+}
+
+function sideLabelHe(side: Guest["side"]): string {
+  return side === "bride" ? "כלה" : side === "groom" ? "חתן" : side === "shared" ? "משותף" : "";
+}
+
+function buildGuestsPrintHtml(
+  guests: Guest[],
+  event: import("@/lib/types").EventInfo,
+): string {
+  const sorted = [...guests].sort((a, b) => {
+    const pa = STATUS_PRINT_ORDER.indexOf(a.status);
+    const pb = STATUS_PRINT_ORDER.indexOf(b.status);
+    if (pa !== pb) return pa - pb;
+    return a.name.localeCompare(b.name, "he");
+  });
+
+  const confirmed = guests.filter((g) => g.status === "confirmed");
+  const confirmedHeads = confirmed.reduce((s, g) => s + (g.attendingCount ?? 1), 0);
+  const maybeCount = guests.filter((g) => g.status === "maybe").length;
+  const declinedCount = guests.filter((g) => g.status === "declined").length;
+  const waitingCount = guests.filter(
+    (g) => g.status === "pending" || g.status === "invited",
+  ).length;
+
+  const hosts = event.partnerName
+    ? `${event.hostName} ו${event.partnerName}`
+    : event.hostName;
+  const venue = [event.synagogue, event.city].filter(Boolean).join(" · ");
+  const dateStr = event.date ? formatEventDate(event.date) : "";
+  const generated = new Date().toLocaleDateString("he-IL", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const dash = '<span class="muted">—</span>';
+
+  const rows = sorted
+    .map((g, i) => {
+      const st = STATUS_PRINT_STYLE[g.status];
+      const phone = g.phone ? `<span dir="ltr">${htmlEsc(g.phone)}</span>` : dash;
+      const side = sideLabelHe(g.side);
+      return `<tr>
+        <td class="num">${i + 1}</td>
+        <td class="name">${htmlEsc(g.name)}</td>
+        <td class="phone">${phone}</td>
+        <td class="num">${g.attendingCount ?? 1}</td>
+        <td><span class="badge" style="background:${st.bg};color:${st.fg}">${st.label}</span></td>
+        <td class="center">${side || dash}</td>
+        <td class="notes">${g.notes ? htmlEsc(g.notes) : ""}</td>
+      </tr>`;
+    })
+    .join("");
+
+  return `<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<title>רשימת מוזמנים${hosts ? " — " + htmlEsc(hosts) : ""}</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Assistant","Heebo","Rubik","Segoe UI",Arial,sans-serif;
+    color: #1c1a17; background: #fff; direction: rtl;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page { padding: 24px 28px; max-width: 900px; margin: 0 auto; }
+  .head { border-bottom: 3px solid #b6912f; padding-bottom: 14px; margin-bottom: 6px; }
+  .brand { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: #b6912f; font-weight: 700; }
+  h1 { font-size: 26px; margin: 5px 0 2px; font-weight: 800; }
+  .sub { color: #6b6459; font-size: 13.5px; }
+  .summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 2px; }
+  .chip { border: 1px solid #e7e1d3; border-radius: 999px; padding: 5px 12px; font-size: 12.5px; color: #4a453d; background: #faf7ef; }
+  .chip b { color: #1c1a17; }
+  .chip.gold { border-color: #e4cf94; background: #fbf3dd; }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12.5px; }
+  thead { display: table-header-group; }
+  th { background: #f3ead2; color: #5a4a1e; text-align: right; padding: 9px 10px; font-weight: 700; border-bottom: 2px solid #d9c58c; white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 1px solid #eee7d7; vertical-align: middle; }
+  tr { break-inside: avoid; }
+  tbody tr:nth-child(even) { background: #fbf9f3; }
+  td.num, .center { text-align: center; color: #6b6459; }
+  td.name { font-weight: 600; color: #1c1a17; }
+  td.phone { direction: ltr; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.notes { color: #6b6459; }
+  .muted { color: #b7b0a2; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+  .foot { margin-top: 18px; padding-top: 10px; border-top: 1px solid #eee7d7; color: #9a9384; font-size: 11px; display: flex; justify-content: space-between; }
+  @page { size: A4; margin: 14mm 12mm; }
+  @media print { .page { padding: 0; } }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="head">
+      <div class="brand">Momentum · רשימת מוזמנים</div>
+      <h1>${hosts ? htmlEsc(hosts) : "האירוע שלי"}</h1>
+      <div class="sub">${[dateStr, venue].filter(Boolean).map(htmlEsc).join(" · ")}</div>
+    </div>
+    <div class="summary">
+      <span class="chip gold">מגיעים (ראשים): <b>${confirmedHeads}</b></span>
+      <span class="chip">סה״כ מוזמנים: <b>${guests.length}</b></span>
+      <span class="chip">אישרו: <b>${confirmed.length}</b></span>
+      <span class="chip">אולי: <b>${maybeCount}</b></span>
+      <span class="chip">לא מגיעים: <b>${declinedCount}</b></span>
+      <span class="chip">ממתינים: <b>${waitingCount}</b></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:42px">#</th>
+          <th>שם</th>
+          <th>טלפון</th>
+          <th style="width:56px">כמות</th>
+          <th style="width:108px">סטטוס</th>
+          <th style="width:66px">צד</th>
+          <th>הערות</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="foot">
+      <span>הופק מ-Momentum · ${htmlEsc(generated)}</span>
+      <span>${guests.length} מוזמנים</span>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function exportGuestsPdf(guests: Guest[], event: import("@/lib/types").EventInfo) {
+  if (guests.length === 0) {
+    showToast("אין מוזמנים לייצוא", "info");
+    return;
+  }
+  const html = buildGuestsPrintHtml(guests, event);
+  // Print via a hidden iframe (not window.open) so popup blockers can't
+  // silently swallow it. The browser's print dialog then offers "Save as PDF".
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("aria-hidden", "true");
+  Object.assign(iframe.style, {
+    position: "fixed",
+    right: "0",
+    bottom: "0",
+    width: "0",
+    height: "0",
+    border: "0",
+  });
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    setTimeout(() => iframe.remove(), 300);
+  };
+  iframe.onload = () => {
+    const win = iframe.contentWindow;
+    if (!win) {
+      showToast("ההדפסה נכשלה — נסה שוב", "error");
+      iframe.remove();
+      return;
+    }
+    try {
+      win.focus();
+      win.onafterprint = cleanup;
+      win.print();
+      // Fallback if afterprint never fires (some browsers/Save-as-PDF flows).
+      setTimeout(cleanup, 60000);
+    } catch {
+      showToast("ההדפסה נכשלה — נסה שוב", "error");
+      iframe.remove();
+    }
+  };
+  iframe.srcdoc = html;
+  document.body.appendChild(iframe);
+  trackEvent("guests_pdf_export", { eventId: event.id, count: guests.length });
 }
 
 async function copyConfirmedList(guests: Guest[]) {
